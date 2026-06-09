@@ -2,7 +2,7 @@
   "name": "edi-insight",
   "displayName": "EDI Insight",
   "description": "Analyze and visualize EDI payment/remittance messages with business-friendly explanations. 100% offline — no data leaves your machine.",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "fattahpour",
   "license": "MIT",
   "icon": "icon.png",
