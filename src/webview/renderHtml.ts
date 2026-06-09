@@ -234,6 +234,7 @@ export class HtmlRenderer {
     <div class="chips" id="chips">${chips}</div>
     <div class="actions">
       <button id="btnEdit" class="secondary">Edit Source</button>
+      <button id="btnExport" class="secondary">Export</button>
       <button id="btnCopy" class="secondary">Copy JSON</button>
       <button id="btnExpand" class="secondary">Expand all</button>
       <button id="btnCollapse" class="secondary">Collapse all</button>
@@ -261,6 +262,7 @@ export class HtmlRenderer {
       var panel = $('editPanel'), status = $('editStatus'), ta = $('ediSource');
 
       $('btnEdit').addEventListener('click', function () { panel.classList.toggle('visible'); if (panel.classList.contains('visible')) { ta.focus(); } });
+      $('btnExport').addEventListener('click', function () { if (vscode) { vscode.postMessage({ type:'export' }); } });
       $('btnCancel').addEventListener('click', function () { panel.classList.remove('visible'); status.textContent=''; });
       $('btnReanalyze').addEventListener('click', function () { if (vscode) { status.textContent='Re-analyzing…'; status.className=''; vscode.postMessage({ type:'reanalyze', content: ta.value }); } });
       $('btnSave').addEventListener('click', function () { if (vscode) { vscode.postMessage({ type:'save', content: ta.value }); } });
@@ -283,6 +285,7 @@ export class HtmlRenderer {
           status.textContent = 'Re-analyzed.'; status.className = 'ok';
           draw();
         }
+        else if (m.type === 'exported') { var b = $('btnExport'); var orig = b ? b.textContent : ''; if (b) { b.textContent = 'Exported!'; setTimeout(function () { b.textContent = orig; }, 2000); } }
       });
 
       var graphId = 0;

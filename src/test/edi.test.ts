@@ -181,6 +181,15 @@ test('ExportService json produces valid JSON matching AnalysisResult shape', () 
   assert.ok(parsed.extracted.parties.length > 0);
 });
 
+test('HtmlRenderer render includes Export button and handles exported message', () => {
+  const raw = readSample('820-billpay-test.edi');
+  const result = buildResult('820-billpay-test.edi');
+  const html = new HtmlRenderer().render(result, raw);
+  assert.ok(html.includes('id="btnExport"'), 'has Export button element');
+  assert.ok(html.includes("type:'export'") || html.includes("type: 'export'"), 'posts export message on click');
+  assert.ok(html.includes("'exported'"), 'handles exported confirmation message');
+});
+
 test('ExportService html delegates to renderStandalone', () => {
   const svc = new ExportService();
   const raw = readSample('820-billpay-test.edi');
