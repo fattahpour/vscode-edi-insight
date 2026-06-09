@@ -11,6 +11,7 @@ import { MessageExtractor, X12Parser } from '../parser/x12Parser';
 import { ReportDetector as ReportDetectorForRender } from '../analyzer/reportDetector';
 import { OutputProfiler as OutputProfilerForRender } from '../analyzer/outputProfiler';
 import { HtmlRenderer } from '../webview/renderHtml';
+import { ExportService } from '../exporter/exportService';
 
 const samplesDirectory = path.resolve(__dirname, '../../samples');
 const parser = new X12Parser();
@@ -23,6 +24,21 @@ function readSample(name: string): string {
 
 function extractSample(name: string) {
   return extractor.extract(parser.parse(readSample(name)));
+}
+
+function buildResult(sampleName: string) {
+  const raw = readSample(sampleName);
+  const extracted = extractSample(sampleName);
+  const classification = classifier.classify(extracted);
+  const reports = new ReportDetector().detect(extracted, classification);
+  return {
+    classification,
+    extracted,
+    reports,
+    warnings: new ValidationService().validate(extracted),
+    segmentGroups: new SegmentGrouper().group(extracted.allSegments),
+    outputProfile: new OutputProfiler().profile(extracted, classification, reports)
+  };
 }
 
 test('X12Parser tokenizes fixtures and detects separators', () => {
@@ -152,4 +168,15 @@ test('HtmlRenderer embeds editable source and edit controls', () => {
   assert.ok(html.includes('acquireVsCodeApi'), 'wires the VS Code messaging API');
   assert.ok(html.includes('ABC BILLPAY SERVICE'), 'embeds the raw EDI content');
   assert.ok(html.includes("type:'reanalyze'") || html.includes('type: \'reanalyze\''), 'posts reanalyze messages');
+});
+
+test('ExportService json produces valid JSON matching AnalysisResult shape', () => {
+  const svc = new ExportService();
+  const result = buildResult('820-billpay-test.edi');
+  const json = svc.export('json', result, '', 'test');
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.classification.environment, 'Test');
+  assert.equal(parsed.classification.paymentChannel, 'BillPay');
+  assert.ok(Array.isArray(parsed.extracted.parties));
+  assert.ok(parsed.extracted.parties.length > 0);
 });
