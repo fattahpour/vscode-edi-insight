@@ -34,8 +34,8 @@ export class X12Parser {
       // Get elements: start after the tag
       let elementsPart = segmentString.substring(3);
       
-      // Skip the element separator if not ISA
-      if (tag !== 'ISA' && elementsPart.startsWith(separators.element)) {
+      // Skip the separator between the segment tag and its first element.
+      if (elementsPart.startsWith(separators.element)) {
         elementsPart = elementsPart.substring(1);
       }
       
@@ -86,6 +86,16 @@ export class MessageExtractor {
     const rmrSegments = segments.filter(s => s.tag === 'RMR');
     const dtmSegments = segments.filter(s => s.tag === 'DTM');
     const refSegments = segments.filter(s => s.tag === 'REF');
+    const perSegments = segments.filter(s => s.tag === 'PER');
+    const nteSegments = segments.filter(s => s.tag === 'NTE');
+    const entSegments = segments.filter(s => s.tag === 'ENT');
+
+    const dates = dtmSegments.map(seg => ({
+      qualifier: seg.elements[0] ? seg.elements[0].trim() : '',
+      date: seg.elements[1] ? this.formatDate(seg.elements[1]) : ''
+    }));
+    const bprEffectiveDate = bprSegment?.elements[12]?.trim();
+    const dtmPaymentDate = dates.find(date => date.qualifier === '097')?.date || dates[0]?.date;
 
     const extracted: ExtractedMessage = {
       senderId: isaSegment && isaSegment.elements[5] ? isaSegment.elements[5].trim() : '',
@@ -97,7 +107,7 @@ export class MessageExtractor {
       segmentCount: seSegment && seSegment.elements[0] ? parseInt(seSegment.elements[0]) : 0,
       paymentAmount: bprSegment && bprSegment.elements[1] ? bprSegment.elements[1].trim() : undefined,
       paymentMethod: bprSegment && bprSegment.elements[3] ? bprSegment.elements[3].trim() : undefined,
-      paymentDate: bprSegment && bprSegment.elements[12] ? this.formatDate(bprSegment.elements[12]) : undefined,
+      paymentDate: bprEffectiveDate ? this.formatDate(bprEffectiveDate) : dtmPaymentDate || undefined,
       paymentFormat: bprSegment && bprSegment.elements[4] ? bprSegment.elements[4].trim() : undefined,
       traceNumber: trnSegments.length > 0 && trnSegments[0].elements[1] ? trnSegments[0].elements[1].trim() : undefined,
       parties: n1Segments.map(seg => ({
@@ -108,13 +118,28 @@ export class MessageExtractor {
         invoiceNumber: seg.elements[1]?.trim(),
         paidAmount: seg.elements[3]?.trim()
       })),
-      dates: dtmSegments.map(seg => ({
-        qualifier: seg.elements[0] ? seg.elements[0].trim() : '',
-        date: seg.elements[1] ? this.formatDate(seg.elements[1]) : ''
-      })),
+      dates,
       references: refSegments.map(seg => ({
         type: seg.elements[0] ? seg.elements[0].trim() : '',
         value: seg.elements[1]?.trim() || ''
+      })),
+      contacts: perSegments.map(seg => ({
+        name: seg.elements[1]?.trim() || '',
+        communicationQualifier: seg.elements[2]?.trim(),
+        communicationNumber: seg.elements[3]?.trim() || '',
+        alternateCommunicationQualifier: seg.elements[4]?.trim(),
+        alternateCommunicationNumber: seg.elements[5]?.trim()
+      })),
+      notes: nteSegments.map(seg => ({
+        referenceCode: seg.elements[0]?.trim(),
+        text: seg.elements[1]?.trim() || ''
+      })),
+      entities: entSegments.map(seg => ({
+        assignedNumber: seg.elements[0]?.trim(),
+        entityIdentifierCode: seg.elements[1]?.trim(),
+        identificationCodeQualifier: seg.elements[2]?.trim(),
+        identificationCode: seg.elements[3]?.trim(),
+        additionalEntityIdentifierCode: seg.elements[4]?.trim()
       })),
       allSegments: segments
     };

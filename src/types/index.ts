@@ -60,6 +60,30 @@ export interface ExtractedMessage {
     value: string;
   }>;
 
+  // PER info
+  contacts?: Array<{
+    name: string;
+    communicationQualifier?: string;
+    communicationNumber: string;
+    alternateCommunicationQualifier?: string;
+    alternateCommunicationNumber?: string;
+  }>;
+
+  // NTE info
+  notes?: Array<{
+    referenceCode?: string;
+    text: string;
+  }>;
+
+  // ENT info
+  entities?: Array<{
+    assignedNumber?: string;
+    entityIdentifierCode?: string;
+    identificationCodeQualifier?: string;
+    identificationCode?: string;
+    additionalEntityIdentifierCode?: string;
+  }>;
+
   // All segments for segment table
   allSegments: Segment[];
 }

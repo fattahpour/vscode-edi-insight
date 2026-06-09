@@ -148,6 +148,40 @@ export const SEGMENT_DEFINITIONS: Record<string, SegmentDefinition> = {
       { position: 3, name: 'Description', type: 'string', required: false, description: '' }
     ]
   },
+  'PER': {
+    tag: 'PER',
+    name: 'Administrative Communications Contact',
+    description: 'Contact name and communication details',
+    elements: [
+      { position: 1, name: 'Contact Function Code', type: 'string', required: true, description: 'IC, BD, CN' },
+      { position: 2, name: 'Name', type: 'string', required: false, description: '' },
+      { position: 3, name: 'Communication Number Qualifier', type: 'string', required: false, description: 'TE, EM, FX, EX' },
+      { position: 4, name: 'Communication Number', type: 'string', required: false, description: '' },
+      { position: 5, name: 'Communication Number Qualifier', type: 'string', required: false, description: 'TE, EM, FX, EX' },
+      { position: 6, name: 'Communication Number', type: 'string', required: false, description: '' }
+    ]
+  },
+  'ENT': {
+    tag: 'ENT',
+    name: 'Entity',
+    description: 'Identifies an entity within the transaction',
+    elements: [
+      { position: 1, name: 'Assigned Number', type: 'numeric', required: false, description: '' },
+      { position: 2, name: 'Entity Identifier Code', type: 'string', required: false, description: 'DR, PY, BY' },
+      { position: 3, name: 'Identification Code Qualifier', type: 'string', required: false, description: 'FI, 38' },
+      { position: 4, name: 'Identification Code', type: 'string', required: false, description: '' },
+      { position: 5, name: 'Entity Identifier Code', type: 'string', required: false, description: '' }
+    ]
+  },
+  'NTE': {
+    tag: 'NTE',
+    name: 'Note / Special Instruction',
+    description: 'Free-form note or special instruction',
+    elements: [
+      { position: 1, name: 'Note Reference Code', type: 'string', required: false, description: 'ADD, OTH, GEN' },
+      { position: 2, name: 'Description', type: 'string', required: true, description: 'Free text' }
+    ]
+  },
   'SE': {
     tag: 'SE',
     name: 'Transaction Set Trailer',

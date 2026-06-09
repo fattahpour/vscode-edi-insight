@@ -1,9 +1,11 @@
 import { AnalysisResult } from '../types';
+import { SegmentExplainer } from '../analyzer/segmentExplainer';
 import { MermaidGraphGenerator } from './mermaidGraph';
 
 export class HtmlRenderer {
   render(result: AnalysisResult): string {
     const graphGen = new MermaidGraphGenerator();
+    const segmentExplainer = new SegmentExplainer();
     const diagram = graphGen.generate(result.extracted);
 
     let html = `<!DOCTYPE html>
@@ -122,6 +124,45 @@ export class HtmlRenderer {
     }
     html += '</div>';
 
+    html += '<div class="section"><h2>Contacts</h2>';
+    if ((result.extracted.contacts ?? []).length > 0) {
+      html += '<table><thead><tr><th>Name</th><th>Communication</th><th>Alternate Communication</th></tr></thead><tbody>';
+      for (const contact of result.extracted.contacts ?? []) {
+        const communication = [contact.communicationQualifier, contact.communicationNumber].filter(Boolean).join(': ');
+        const alternateCommunication = [contact.alternateCommunicationQualifier, contact.alternateCommunicationNumber].filter(Boolean).join(': ');
+        html += `<tr><td>${this.escape(contact.name || 'N/A')}</td><td>${this.escape(communication || 'N/A')}</td><td>${this.escape(alternateCommunication || 'N/A')}</td></tr>`;
+      }
+      html += '</tbody></table>';
+    } else {
+      html += '<p class="no-data">No contact information found.</p>';
+    }
+    html += '</div>';
+
+    html += '<div class="section"><h2>Entities</h2>';
+    if ((result.extracted.entities ?? []).length > 0) {
+      html += '<table><thead><tr><th>Assigned Number</th><th>Entity Code</th><th>Identification</th><th>Additional Entity Code</th></tr></thead><tbody>';
+      for (const entity of result.extracted.entities ?? []) {
+        const identification = [entity.identificationCodeQualifier, entity.identificationCode].filter(Boolean).join(': ');
+        html += `<tr><td>${this.escape(entity.assignedNumber || 'N/A')}</td><td>${this.escape(entity.entityIdentifierCode || 'N/A')}</td><td>${this.escape(identification || 'N/A')}</td><td>${this.escape(entity.additionalEntityIdentifierCode || 'N/A')}</td></tr>`;
+      }
+      html += '</tbody></table>';
+    } else {
+      html += '<p class="no-data">No entity information found.</p>';
+    }
+    html += '</div>';
+
+    html += '<div class="section"><h2>Notes</h2>';
+    if ((result.extracted.notes ?? []).length > 0) {
+      html += '<table><thead><tr><th>Reference Code</th><th>Text</th></tr></thead><tbody>';
+      for (const note of result.extracted.notes ?? []) {
+        html += `<tr><td>${this.escape(note.referenceCode || 'N/A')}</td><td>${this.escape(note.text)}</td></tr>`;
+      }
+      html += '</tbody></table>';
+    } else {
+      html += '<p class="no-data">No notes found.</p>';
+    }
+    html += '</div>';
+
     html += '<div class="section"><h2>Invoice / Remittance Details</h2>';
     if (result.extracted.remittanceDetails.length > 0) {
       html += '<table><thead><tr><th>Invoice Number</th><th>Paid Amount</th></tr></thead><tbody>';
@@ -134,9 +175,12 @@ export class HtmlRenderer {
     }
     html += '</div>';
 
-    html += '<div class="section"><h2>Segment Explanation</h2><table><thead><tr><th>Segment</th><th>Content</th></tr></thead><tbody>';
+    html += '<div class="section"><h2>Segment Explanation</h2><table><thead><tr><th>Segment</th><th>Position</th><th>Name</th><th>Value</th></tr></thead><tbody>';
     for (const segment of result.extracted.allSegments) {
-      html += `<tr><td><strong>${this.escape(segment.tag)}</strong></td><td><code>${this.escape(segment.raw.substring(0, 100))}${segment.raw.length > 100 ? '...' : ''}</code></td></tr>`;
+      const rows = segmentExplainer.explain(segment);
+      for (const row of rows) {
+        html += `<tr><td><strong>${this.escape(segment.tag)}</strong></td><td>${this.escape(`${segment.tag}${String(row.position).padStart(2, '0')}`)}</td><td>${this.escape(row.name)}</td><td><code>${this.escape(row.value)}</code></td></tr>`;
+      }
     }
     html += '</tbody></table></div>';
 

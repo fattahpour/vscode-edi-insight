@@ -26,12 +26,8 @@ export class MessageClassifier {
 
   private detectPaymentChannel(extracted: ExtractedMessage): string {
     const method = extracted.paymentMethod?.toUpperCase() || '';
-
-    if (method === 'ACH') return 'ACH';
-    if (method === 'WIR') return 'Wire';
-    if (method === 'CHK') return 'Check';
-
     const allText = this.buildSearchText(extracted);
+
     if (allText.includes('billpay') || allText.includes('bill pay') ||
         allText.includes('utility') || allText.includes('consumer bill') ||
         allText.includes('invoice payment')) {
@@ -43,6 +39,10 @@ export class MessageClassifier {
       return 'C2C';
     }
 
+    if (method === 'ACH') return 'ACH';
+    if (method === 'WIR') return 'Wire';
+    if (method === 'CHK') return 'Check';
+
     return 'Unknown';
   }
 
@@ -53,7 +53,18 @@ export class MessageClassifier {
       extracted.paymentMethod,
       extracted.paymentFormat,
       ...extracted.parties.map(p => p.name),
-      ...extracted.references.map(r => r.value)
+      ...extracted.references.map(r => r.value),
+      ...(extracted.contacts ?? []).flatMap(contact => [
+        contact.name,
+        contact.communicationNumber,
+        contact.alternateCommunicationNumber
+      ]),
+      ...(extracted.notes ?? []).map(note => note.text),
+      ...(extracted.entities ?? []).flatMap(entity => [
+        entity.entityIdentifierCode,
+        entity.identificationCode,
+        entity.additionalEntityIdentifierCode
+      ])
     ];
     return parts.join(' ').toLowerCase();
   }

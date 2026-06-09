@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "X12 EDI",
+  "scopeName": "source.edi",
+  "patterns": [
+    {
+      "comment": "Segment Tag",
+      "match": "(?:^|(?<=~))([A-Z][A-Z0-9]{1,2})",
+      "captures": {
+        "1": {
+          "name": "keyword.control.segment.edi"
+        }
+      }
+    },
+    {
+      "comment": "Element Separator",
+      "match": "\\*",
+      "name": "keyword.operator.element.edi"
+    },
+    {
+      "comment": "Segment Terminator",
+      "match": "~",
+      "name": "keyword.control.terminator.edi"
+    },
+    {
+      "comment": "Sub-element Separator",
+      "match": ":",
+      "name": "keyword.operator.subelement.edi"
+    }
+  ]
+}
