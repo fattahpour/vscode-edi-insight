@@ -181,6 +181,18 @@ test('ExportService json produces valid JSON matching AnalysisResult shape', () 
   assert.ok(parsed.extracted.parties.length > 0);
 });
 
+test('ExportService md contains title, headings, party table, and Mermaid block', () => {
+  const svc = new ExportService();
+  const result = buildResult('820-billpay-test.edi');
+  const md = svc.export('md', result, '', 'test.edi');
+  assert.ok(md.includes('# EDI Analysis: test.edi'), 'has document title');
+  assert.ok(md.includes('## Message Overview'), 'has Message Overview heading');
+  assert.ok(md.includes('## Business Report Detection'), 'has Business Report Detection heading');
+  assert.ok(md.includes('## Parties'), 'has Parties heading');
+  assert.ok(md.includes('| PR | ABC BILLPAY SERVICE |'), 'has party data row');
+  assert.ok(md.includes('```mermaid'), 'has Mermaid diagram fenced block');
+});
+
 test('ExportService csv contains section headers and tabular data', () => {
   const svc = new ExportService();
   const result = buildResult('820-billpay-test.edi');
