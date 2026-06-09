@@ -20,6 +20,11 @@ export class HtmlRenderer {
     return this.build(result);
   }
 
+  renderStandalone(result: AnalysisResult, rawContent: string = ''): string {
+    const { chips, sections } = this.build(result);
+    return this.shellStandalone(chips, sections);
+  }
+
   private build(result: AnalysisResult): { chips: string; sections: string } {
     const graphGen = new MermaidGraphGenerator();
     const segmentExplainer = new SegmentExplainer();
@@ -220,6 +225,91 @@ export class HtmlRenderer {
   <title>EDI Insight - Analysis Result</title>
   ${mermaidScript}
   <style>
+    ${this.styles()}
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span class="brand">📊 EDI Insight</span>
+    <div class="chips" id="chips">${chips}</div>
+    <div class="actions">
+      <button id="btnEdit" class="secondary">Edit Source</button>
+      <button id="btnCopy" class="secondary">Copy JSON</button>
+      <button id="btnExpand" class="secondary">Expand all</button>
+      <button id="btnCollapse" class="secondary">Collapse all</button>
+    </div>
+  </div>
+  <div class="container">
+    <div class="edit-panel" id="editPanel">
+      <h3>Edit EDI Source</h3>
+      <textarea id="ediSource" spellcheck="false">${rawContentEscaped}</textarea>
+      <div class="edit-actions">
+        <button id="btnReanalyze">Re-analyze</button>
+        <button id="btnSave" class="secondary">Save to File</button>
+        <button id="btnCancel" class="secondary">Cancel</button>
+        <span id="editStatus"></span>
+      </div>
+    </div>
+    <h1>EDI Message Analysis</h1>
+    <p class="subtitle">Business-language breakdown of the EDI payment/remittance message.</p>
+    <div id="analysis">${sections}</div>
+  </div>
+  <script nonce="${nonce}">
+    (function () {
+      var vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
+      function $(id) { return document.getElementById(id); }
+      var panel = $('editPanel'), status = $('editStatus'), ta = $('ediSource');
+
+      $('btnEdit').addEventListener('click', function () { panel.classList.toggle('visible'); if (panel.classList.contains('visible')) { ta.focus(); } });
+      $('btnCancel').addEventListener('click', function () { panel.classList.remove('visible'); status.textContent=''; });
+      $('btnReanalyze').addEventListener('click', function () { if (vscode) { status.textContent='Re-analyzing…'; status.className=''; vscode.postMessage({ type:'reanalyze', content: ta.value }); } });
+      $('btnSave').addEventListener('click', function () { if (vscode) { vscode.postMessage({ type:'save', content: ta.value }); } });
+
+      $('btnCopy').addEventListener('click', function () {
+        var txt = ($('jsonOutput') || {}).textContent || '';
+        var done = function () { var b = $('btnCopy'); b.textContent='Copied!'; setTimeout(function(){ b.textContent='Copy JSON'; }, 1500); };
+        if (navigator.clipboard) { navigator.clipboard.writeText(txt).then(done).catch(done); } else { done(); }
+      });
+      $('btnExpand').addEventListener('click', function () { document.querySelectorAll('details.section').forEach(function(d){ d.open=true; }); });
+      $('btnCollapse').addEventListener('click', function () { document.querySelectorAll('details.section').forEach(function(d){ d.open=false; }); });
+
+      window.addEventListener('message', function (ev) {
+        var m = ev.data || {};
+        if (m.type === 'error') { status.textContent = 'Error: ' + m.message; status.className = 'err'; }
+        else if (m.type === 'saved') { status.textContent = 'Saved to file.'; status.className = 'ok'; }
+        else if (m.type === 'rendered') {
+          $('chips').innerHTML = m.chips;
+          $('analysis').innerHTML = m.sections;
+          status.textContent = 'Re-analyzed.'; status.className = 'ok';
+          draw();
+        }
+      });
+
+      var graphId = 0;
+      function draw(attempt) {
+        var src = document.querySelector('.mermaid-source');
+        var target = document.querySelector('.mermaid');
+        if (!src || !target) { return; }
+        if (typeof mermaid === 'undefined') {
+          // Deferred CDN script not ready yet — retry briefly, then give up gracefully.
+          if ((attempt || 0) < 40) { setTimeout(function () { draw((attempt || 0) + 1); }, 100); }
+          else { target.innerHTML = '<pre style="color:#999">Graph unavailable (Mermaid failed to load).</pre>'; }
+          return;
+        }
+        var dark = document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast');
+        mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default', securityLevel: 'loose' });
+        mermaid.render('ediGraph' + (graphId++), src.textContent || '').then(function (res) { target.innerHTML = res.svg; })
+          .catch(function (err) { target.innerHTML = '<pre style="color:#e74c3c;white-space:pre-wrap">Graph render error: ' + String(err && err.message ? err.message : err) + '</pre>'; });
+      }
+      if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', function () { draw(); }); } else { draw(); }
+    })();
+  </script>
+</body>
+</html>`;
+  }
+
+  private styles(): string {
+    return `
     :root {
       --bg: var(--vscode-editor-background, #1e1e1e);
       --fg: var(--vscode-editor-foreground, #d4d4d4);
@@ -315,64 +405,47 @@ export class HtmlRenderer {
     .warning-title { font-weight: 700; margin-bottom: 4px; }
 
     .code-block { background: var(--code-bg); color: var(--fg); padding: 14px; border-radius: 4px; overflow-x: auto; font-family: var(--vscode-editor-font-family, "Courier New", monospace); font-size: 12px; white-space: pre-wrap; word-break: break-word; line-height: 1.4; tab-size: 2; }
+    `;
+  }
+
+  private shellStandalone(chips: string, sections: string): string {
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EDI Insight - Analysis Result</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    ${this.styles()}
   </style>
 </head>
 <body>
   <div class="toolbar">
     <span class="brand">📊 EDI Insight</span>
-    <div class="chips" id="chips">${chips}</div>
+    <div class="chips">${chips}</div>
     <div class="actions">
-      <button id="btnEdit" class="secondary">Edit Source</button>
       <button id="btnCopy" class="secondary">Copy JSON</button>
       <button id="btnExpand" class="secondary">Expand all</button>
       <button id="btnCollapse" class="secondary">Collapse all</button>
     </div>
   </div>
   <div class="container">
-    <div class="edit-panel" id="editPanel">
-      <h3>Edit EDI Source</h3>
-      <textarea id="ediSource" spellcheck="false">${rawContentEscaped}</textarea>
-      <div class="edit-actions">
-        <button id="btnReanalyze">Re-analyze</button>
-        <button id="btnSave" class="secondary">Save to File</button>
-        <button id="btnCancel" class="secondary">Cancel</button>
-        <span id="editStatus"></span>
-      </div>
-    </div>
     <h1>EDI Message Analysis</h1>
     <p class="subtitle">Business-language breakdown of the EDI payment/remittance message.</p>
     <div id="analysis">${sections}</div>
   </div>
-  <script nonce="${nonce}">
+  <script>
     (function () {
-      var vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
       function $(id) { return document.getElementById(id); }
-      var panel = $('editPanel'), status = $('editStatus'), ta = $('ediSource');
-
-      $('btnEdit').addEventListener('click', function () { panel.classList.toggle('visible'); if (panel.classList.contains('visible')) { ta.focus(); } });
-      $('btnCancel').addEventListener('click', function () { panel.classList.remove('visible'); status.textContent=''; });
-      $('btnReanalyze').addEventListener('click', function () { if (vscode) { status.textContent='Re-analyzing…'; status.className=''; vscode.postMessage({ type:'reanalyze', content: ta.value }); } });
-      $('btnSave').addEventListener('click', function () { if (vscode) { vscode.postMessage({ type:'save', content: ta.value }); } });
 
       $('btnCopy').addEventListener('click', function () {
         var txt = ($('jsonOutput') || {}).textContent || '';
-        var done = function () { var b = $('btnCopy'); b.textContent='Copied!'; setTimeout(function(){ b.textContent='Copy JSON'; }, 1500); };
+        var done = function () { var b = $('btnCopy'); b.textContent = 'Copied!'; setTimeout(function () { b.textContent = 'Copy JSON'; }, 1500); };
         if (navigator.clipboard) { navigator.clipboard.writeText(txt).then(done).catch(done); } else { done(); }
       });
-      $('btnExpand').addEventListener('click', function () { document.querySelectorAll('details.section').forEach(function(d){ d.open=true; }); });
-      $('btnCollapse').addEventListener('click', function () { document.querySelectorAll('details.section').forEach(function(d){ d.open=false; }); });
-
-      window.addEventListener('message', function (ev) {
-        var m = ev.data || {};
-        if (m.type === 'error') { status.textContent = 'Error: ' + m.message; status.className = 'err'; }
-        else if (m.type === 'saved') { status.textContent = 'Saved to file.'; status.className = 'ok'; }
-        else if (m.type === 'rendered') {
-          $('chips').innerHTML = m.chips;
-          $('analysis').innerHTML = m.sections;
-          status.textContent = 'Re-analyzed.'; status.className = 'ok';
-          draw();
-        }
-      });
+      $('btnExpand').addEventListener('click', function () { document.querySelectorAll('details.section').forEach(function (d) { d.open = true; }); });
+      $('btnCollapse').addEventListener('click', function () { document.querySelectorAll('details.section').forEach(function (d) { d.open = false; }); });
 
       var graphId = 0;
       function draw(attempt) {
@@ -380,9 +453,8 @@ export class HtmlRenderer {
         var target = document.querySelector('.mermaid');
         if (!src || !target) { return; }
         if (typeof mermaid === 'undefined') {
-          // Deferred CDN script not ready yet — retry briefly, then give up gracefully.
           if ((attempt || 0) < 40) { setTimeout(function () { draw((attempt || 0) + 1); }, 100); }
-          else { target.innerHTML = '<pre style="color:#999">Graph unavailable (Mermaid failed to load).</pre>'; }
+          else { target.innerHTML = '<pre style="color:#999">Graph unavailable.</pre>'; }
           return;
         }
         var dark = document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast');
