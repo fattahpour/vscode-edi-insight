@@ -43,9 +43,9 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     try {
-      const html = new HtmlRenderer().render(analyze(content), content);
       currentSourceUri = editor.document.uri;
-      showWebView(context, html, editor.document.fileName);
+      const panel = ensurePanel(context, editor.document.fileName);
+      panel.webview.html = new HtmlRenderer().render(analyze(content), content, buildAssets(context, panel.webview));
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Failed to analyze EDI file: ${errorMsg}`);
@@ -56,7 +56,21 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(disposable);
 }
 
-function showWebView(context: vscode.ExtensionContext, html: string, fileName: string) {
+function nonce(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let out = '';
+  for (let i = 0; i < 32; i++) { out += chars.charAt(Math.floor(Math.random() * chars.length)); }
+  return out;
+}
+
+function buildAssets(context: vscode.ExtensionContext, webview: vscode.Webview) {
+  const mermaidUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(context.extensionUri, 'media', 'mermaid.min.js')
+  ).toString();
+  return { mermaidUri, cspSource: webview.cspSource, nonce: nonce() };
+}
+
+function ensurePanel(context: vscode.ExtensionContext, fileName: string): vscode.WebviewPanel {
   const column = vscode.ViewColumn.Beside;
 
   if (!currentPanel) {
@@ -64,7 +78,11 @@ function showWebView(context: vscode.ExtensionContext, html: string, fileName: s
       'ediInsight',
       `EDI Insight - ${fileName.split('/').pop()}`,
       column,
-      { enableScripts: true, retainContextWhenHidden: true }
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')]
+      }
     );
 
     currentPanel.webview.onDidReceiveMessage(
@@ -78,7 +96,7 @@ function showWebView(context: vscode.ExtensionContext, html: string, fileName: s
     currentPanel.reveal(column);
   }
 
-  currentPanel.webview.html = html;
+  return currentPanel;
 }
 
 async function handleMessage(msg: { type?: string; content?: string }) {
@@ -88,7 +106,8 @@ async function handleMessage(msg: { type?: string; content?: string }) {
   if (msg.type === 'reanalyze') {
     try {
       if (!content.trim()) { throw new Error('Source is empty.'); }
-      currentPanel.webview.html = new HtmlRenderer().render(analyze(content), content);
+      const fragment = new HtmlRenderer().fragment(analyze(content));
+      currentPanel.webview.postMessage({ type: 'rendered', chips: fragment.chips, sections: fragment.sections });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       currentPanel.webview.postMessage({ type: 'error', message });

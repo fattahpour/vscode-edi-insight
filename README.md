@@ -10,8 +10,18 @@ A VS Code extension that analyzes EDI (Electronic Data Interchange) payment and 
 - **Business Report Generation** - Shows which reports the message will generate
 - **Message Structure Graph** - Visual representation of message hierarchy using Mermaid
 - **Validation Warnings** - Highlights missing or invalid segments
-- **Segment-by-Segment Explanation** - Detailed breakdown of all segments
+- **Segment-by-Segment Explanation** - Detailed breakdown of all segments, grouped by envelope/payment/parties/etc.
+- **Handoff & Cadence** - Detects downstream handoff reports and infers output cadence (one-time / daily / weekly / ...)
+- **Edit Source** - Edit the EDI inline, then Re-analyze instantly or Save back to the file
 - **JSON Output** - Raw analysis data for further processing
+
+## Privacy
+
+**100% offline. No data ever leaves your machine.** The extension performs all
+parsing and analysis locally and makes **no network requests** — Mermaid is
+bundled inside the extension, and the results webview runs under a strict
+Content-Security-Policy (`default-src 'none'`) that blocks all outbound and
+inbound network traffic. Safe for sensitive payment/healthcare EDI.
 
 ## Supported EDI Formats
 

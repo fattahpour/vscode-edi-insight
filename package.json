@@ -1,18 +1,43 @@
 {
   "name": "edi-insight",
   "displayName": "EDI Insight",
-  "description": "Analyze and visualize EDI payment/remittance messages with business-friendly explanations",
-  "version": "0.1.3",
+  "description": "Analyze and visualize EDI payment/remittance messages with business-friendly explanations. 100% offline — no data leaves your machine.",
+  "version": "0.1.4",
   "publisher": "peyman",
+  "license": "MIT",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
+    "Visualization",
+    "Programming Languages",
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:ediInsight.analyze"
+  "keywords": [
+    "EDI",
+    "X12",
+    "820",
+    "835",
+    "remittance",
+    "payment",
+    "ACH",
+    "healthcare",
+    "offline"
   ],
+  "galleryBanner": {
+    "color": "#0b5cad",
+    "theme": "dark"
+  },
+  "homepage": "https://github.com/peyman/vscode-edi-insight-plugin#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/peyman/vscode-edi-insight-plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/peyman/vscode-edi-insight-plugin/issues"
+  },
+  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [

@@ -2,8 +2,25 @@ import { AnalysisResult } from '../types';
 import { SegmentExplainer } from '../analyzer/segmentExplainer';
 import { MermaidGraphGenerator } from './mermaidGraph';
 
+export interface WebviewAssets {
+  mermaidUri: string;   // webview URI for the locally-bundled mermaid script
+  cspSource: string;    // webview.cspSource
+  nonce: string;        // per-render nonce for inline script
+}
+
 export class HtmlRenderer {
-  render(result: AnalysisResult, rawContent: string = ''): string {
+  render(result: AnalysisResult, rawContent: string = '', assets?: WebviewAssets): string {
+    const { chips, sections } = this.build(result);
+    return this.shell(chips, sections, this.escape(rawContent), assets);
+  }
+
+  // Rendered chips + analysis body, used for in-place updates (re-analyze)
+  // without reloading the whole webview page.
+  fragment(result: AnalysisResult): { chips: string; sections: string } {
+    return this.build(result);
+  }
+
+  private build(result: AnalysisResult): { chips: string; sections: string } {
     const graphGen = new MermaidGraphGenerator();
     const segmentExplainer = new SegmentExplainer();
     const diagram = graphGen.generate(result.extracted);
@@ -158,7 +175,7 @@ export class HtmlRenderer {
     sections.push(this.section('Raw JSON Output', false,
       '<pre class="code-block" id="jsonOutput">' + e(JSON.stringify(result, null, 2)) + '</pre>'));
 
-    return this.shell(chips, sections.join('\n'), e(rawContent));
+    return { chips, sections: sections.join('\n') };
   }
 
   // ---- building blocks ----
@@ -183,14 +200,25 @@ export class HtmlRenderer {
     return h + '</tbody></table>';
   }
 
-  private shell(chips: string, sections: string, rawContentEscaped: string): string {
+  private shell(chips: string, sections: string, rawContentEscaped: string, assets?: WebviewAssets): string {
+    // Strict CSP: default-src 'none' blocks ALL network (no connect/fetch/img/font
+    // from anywhere). Scripts run only from the extension bundle (cspSource) plus our
+    // nonced inline script. No data ever leaves or enters the webview.
+    const nonce = assets?.nonce ?? '';
+    const csp = assets
+      ? `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${assets.cspSource} data:; style-src ${assets.cspSource} 'unsafe-inline'; font-src ${assets.cspSource}; script-src 'nonce-${nonce}' ${assets.cspSource};">`
+      : '';
+    const mermaidScript = assets
+      ? `<script defer nonce="${nonce}" src="${assets.mermaidUri}"></script>`
+      : '';
     return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${csp}
   <title>EDI Insight - Analysis Result</title>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"></script>
+  ${mermaidScript}
   <style>
     :root {
       --bg: var(--vscode-editor-background, #1e1e1e);
@@ -292,7 +320,7 @@ export class HtmlRenderer {
 <body>
   <div class="toolbar">
     <span class="brand">📊 EDI Insight</span>
-    <div class="chips">${chips}</div>
+    <div class="chips" id="chips">${chips}</div>
     <div class="actions">
       <button id="btnEdit" class="secondary">Edit Source</button>
       <button id="btnCopy" class="secondary">Copy JSON</button>
@@ -313,9 +341,9 @@ export class HtmlRenderer {
     </div>
     <h1>EDI Message Analysis</h1>
     <p class="subtitle">Business-language breakdown of the EDI payment/remittance message.</p>
-    ${sections}
+    <div id="analysis">${sections}</div>
   </div>
-  <script>
+  <script nonce="${nonce}">
     (function () {
       var vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
       function $(id) { return document.getElementById(id); }
@@ -338,18 +366,31 @@ export class HtmlRenderer {
         var m = ev.data || {};
         if (m.type === 'error') { status.textContent = 'Error: ' + m.message; status.className = 'err'; }
         else if (m.type === 'saved') { status.textContent = 'Saved to file.'; status.className = 'ok'; }
+        else if (m.type === 'rendered') {
+          $('chips').innerHTML = m.chips;
+          $('analysis').innerHTML = m.sections;
+          status.textContent = 'Re-analyzed.'; status.className = 'ok';
+          draw();
+        }
       });
 
-      function draw() {
+      var graphId = 0;
+      function draw(attempt) {
         var src = document.querySelector('.mermaid-source');
         var target = document.querySelector('.mermaid');
-        if (!src || !target || typeof mermaid === 'undefined') { return; }
+        if (!src || !target) { return; }
+        if (typeof mermaid === 'undefined') {
+          // Deferred CDN script not ready yet — retry briefly, then give up gracefully.
+          if ((attempt || 0) < 40) { setTimeout(function () { draw((attempt || 0) + 1); }, 100); }
+          else { target.innerHTML = '<pre style="color:#999">Graph unavailable (Mermaid failed to load).</pre>'; }
+          return;
+        }
         var dark = document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast');
         mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default', securityLevel: 'loose' });
-        mermaid.render('ediGraph', src.textContent || '').then(function (res) { target.innerHTML = res.svg; })
+        mermaid.render('ediGraph' + (graphId++), src.textContent || '').then(function (res) { target.innerHTML = res.svg; })
           .catch(function (err) { target.innerHTML = '<pre style="color:#e74c3c;white-space:pre-wrap">Graph render error: ' + String(err && err.message ? err.message : err) + '</pre>'; });
       }
-      if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', draw); } else { draw(); }
+      if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', function () { draw(); }); } else { draw(); }
     })();
   </script>
 </body>
