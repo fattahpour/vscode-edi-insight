@@ -180,3 +180,16 @@ test('ExportService json produces valid JSON matching AnalysisResult shape', () 
   assert.ok(Array.isArray(parsed.extracted.parties));
   assert.ok(parsed.extracted.parties.length > 0);
 });
+
+test('ExportService csv contains section headers and tabular data', () => {
+  const svc = new ExportService();
+  const result = buildResult('820-billpay-test.edi');
+  const csv = svc.export('csv', result, '', 'test');
+  assert.ok(csv.includes('Parties'), 'has Parties section header');
+  assert.ok(csv.includes('"Code","Name"'), 'has party column headers');
+  assert.ok(csv.includes('"PR","ABC BILLPAY SERVICE"'), 'has party data row');
+  assert.ok(csv.includes('Remittance Details'), 'has Remittance Details section header');
+  assert.ok(csv.includes('"Invoice Number","Paid Amount"'), 'has remittance column headers');
+  assert.ok(csv.includes('Segment Explanation'), 'has Segment Explanation section header');
+  assert.ok(csv.includes('"Segment","Position","Name","Value"'), 'has segment column headers');
+});
