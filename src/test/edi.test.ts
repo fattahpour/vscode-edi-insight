@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { MessageClassifier } from '../analyzer/messageClassifier';
+import { OutputProfiler } from '../analyzer/outputProfiler';
 import { ReportDetector } from '../analyzer/reportDetector';
+import { SegmentGrouper } from '../analyzer/segmentGrouper';
 import { ValidationService } from '../analyzer/validationService';
 import { MessageExtractor, X12Parser } from '../parser/x12Parser';
 
@@ -89,4 +91,39 @@ test('ValidationService reports envelope errors without false sample errors', ()
   assert.equal(errors.length, 1);
   assert.equal(errors[0].message, 'Missing IEA (Interchange Control Trailer) segment');
   assert.deepEqual(errors[0].affectedSegments, ['IEA']);
+});
+
+test('OutputProfiler identifies handoffs and infers output cadence', () => {
+  const detector = new ReportDetector();
+  const profiler = new OutputProfiler();
+  const billPay = extractSample('820-billpay-test.edi');
+  const acknowledgment = extractSample('997-ack.edi');
+  const billPayClassification = classifier.classify(billPay);
+  const acknowledgmentClassification = classifier.classify(acknowledgment);
+
+  const billPayProfile = profiler.profile(
+    billPay,
+    billPayClassification,
+    detector.detect(billPay, billPayClassification)
+  );
+  const acknowledgmentProfile = profiler.profile(
+    acknowledgment,
+    acknowledgmentClassification,
+    detector.detect(acknowledgment, acknowledgmentClassification)
+  );
+
+  assert.equal(billPayProfile.hasHandoffReport, true);
+  assert.equal(billPayProfile.cadence, 'Daily');
+  assert.equal(acknowledgmentProfile.hasHandoffReport, false);
+  assert.deepEqual(acknowledgmentProfile.statusReports, ['Functional Acknowledgment Report']);
+  assert.equal(acknowledgmentProfile.cadence, 'Real-time');
+});
+
+test('SegmentGrouper places ISA and IEA in the interchange envelope', () => {
+  const parsed = parser.parse(readSample('820-billpay-test.edi'));
+  const groups = new SegmentGrouper().group(parsed.segments);
+  const interchangeEnvelope = groups.find(group => group.name === 'Interchange Envelope');
+
+  assert.ok(interchangeEnvelope);
+  assert.deepEqual(interchangeEnvelope.segments.map(segment => segment.tag), ['ISA', 'IEA']);
 });

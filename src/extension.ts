@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { X12Parser, MessageExtractor } from './parser/x12Parser';
 import { MessageClassifier } from './analyzer/messageClassifier';
 import { ReportDetector } from './analyzer/reportDetector';
+import { SegmentGrouper } from './analyzer/segmentGrouper';
+import { OutputProfiler } from './analyzer/outputProfiler';
 import { ValidationService } from './analyzer/validationService';
 import { HtmlRenderer } from './webview/renderHtml';
 import { AnalysisResult } from './types';
@@ -41,6 +43,12 @@ export function activate(context: vscode.ExtensionContext) {
       const reportDetector = new ReportDetector();
       const reports = reportDetector.detect(extracted, classification);
 
+      const segmentGrouper = new SegmentGrouper();
+      const segmentGroups = segmentGrouper.group(extracted.allSegments);
+
+      const outputProfiler = new OutputProfiler();
+      const outputProfile = outputProfiler.profile(extracted, classification, reports);
+
       const validator = new ValidationService();
       const warnings = validator.validate(extracted);
 
@@ -48,7 +56,9 @@ export function activate(context: vscode.ExtensionContext) {
         classification,
         extracted,
         reports,
-        warnings
+        warnings,
+        segmentGroups,
+        outputProfile
       };
 
       const renderer = new HtmlRenderer();

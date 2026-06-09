@@ -1,3 +1,6 @@
+import type { OutputProfile } from '../analyzer/outputProfiler';
+import type { SegmentGroup } from '../analyzer/segmentGrouper';
+
 export interface Segment {
   tag: string;
   elements: string[];
@@ -115,4 +118,6 @@ export interface AnalysisResult {
   extracted: ExtractedMessage;
   reports: Report[];
   warnings: ValidationWarning[];
+  segmentGroups: SegmentGroup[];
+  outputProfile: OutputProfile;
 }

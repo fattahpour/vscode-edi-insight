@@ -53,6 +53,18 @@ export class HtmlRenderer {
     .no-data { color: #7f8c8d; font-style: italic; }
     .badge { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-right: 5px; margin-bottom: 5px; }
     .badge-segment { background: #ecf0f1; color: #2c3e50; }
+    .badge-yes { background: #d5f5e3; color: #1e8449; }
+    .badge-no { background: #fadbd8; color: #c0392b; }
+    .badge-confidence { background: #d6eaf8; color: #2471a3; }
+    .output-profile { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 15px; }
+    .output-card { padding: 15px; background: #f8f9fa; border: 1px solid #ecf0f1; border-radius: 4px; }
+    .output-card ul { margin: 8px 0 0 20px; }
+    .cadence-value { color: #2c3e50; font-size: 28px; font-weight: bold; margin: 4px 0 8px; }
+    .estimated-reason { color: #5d6d7e; margin-top: 8px; }
+    .segment-group { margin-top: 24px; }
+    .segment-group:first-of-type { margin-top: 0; }
+    .segment-group h3 { color: #2c3e50; font-size: 17px; margin-bottom: 4px; }
+    .segment-group-description { color: #7f8c8d; font-size: 13px; margin-bottom: 10px; }
     .payment-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px; }
     .summary-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; }
     .summary-card.amount { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
@@ -103,6 +115,38 @@ export class HtmlRenderer {
       html += '<p class="no-data">No reports detected for this message.</p>';
     }
     html += '</div>';
+
+    html += '<div class="section"><h2>Handoff &amp; Output Cadence</h2><div class="output-profile">';
+    html += '<div class="output-card"><div class="info-label">Downstream Handoff Report</div>';
+    html += result.outputProfile.hasHandoffReport
+      ? '<span class="badge badge-yes">YES</span>'
+      : '<span class="badge badge-no">NO</span>';
+    html += '<div class="report-fields"><strong>Handoff Reports:</strong></div>';
+    if (result.outputProfile.handoffReports.length > 0) {
+      html += '<ul>';
+      for (const reportName of result.outputProfile.handoffReports) {
+        html += `<li>${this.escape(reportName)}</li>`;
+      }
+      html += '</ul>';
+    } else {
+      html += '<p class="no-data">None detected.</p>';
+    }
+    html += '<div class="report-fields"><strong>Status Reports:</strong></div>';
+    if (result.outputProfile.statusReports.length > 0) {
+      html += '<ul>';
+      for (const reportName of result.outputProfile.statusReports) {
+        html += `<li>${this.escape(reportName)}</li>`;
+      }
+      html += '</ul>';
+    } else {
+      html += '<p class="no-data">None detected.</p>';
+    }
+    html += '</div>';
+    html += '<div class="output-card"><div class="info-label">Estimated Cadence</div>';
+    html += `<div class="cadence-value">${this.escape(result.outputProfile.cadence)}</div>`;
+    html += `<span class="badge badge-confidence">${this.escape(result.outputProfile.confidence)} confidence</span>`;
+    html += `<p class="estimated-reason"><strong>Estimated:</strong> ${this.escape(result.outputProfile.cadenceReason)}</p>`;
+    html += '</div></div></div>';
 
     html += '<div class="section"><h2>Payment Summary</h2><div class="payment-summary">';
     html += `<div class="summary-card amount"><div class="summary-label">Amount</div><div class="summary-value">${this.escape(result.extracted.paymentAmount || 'N/A')}</div></div>`;
@@ -175,14 +219,21 @@ export class HtmlRenderer {
     }
     html += '</div>';
 
-    html += '<div class="section"><h2>Segment Explanation</h2><table><thead><tr><th>Segment</th><th>Position</th><th>Name</th><th>Value</th></tr></thead><tbody>';
-    for (const segment of result.extracted.allSegments) {
-      const rows = segmentExplainer.explain(segment);
-      for (const row of rows) {
-        html += `<tr><td><strong>${this.escape(segment.tag)}</strong></td><td>${this.escape(`${segment.tag}${String(row.position).padStart(2, '0')}`)}</td><td>${this.escape(row.name)}</td><td><code>${this.escape(row.value)}</code></td></tr>`;
+    html += '<div class="section"><h2>Segment Explanation</h2>';
+    for (const group of result.segmentGroups) {
+      html += '<div class="segment-group">';
+      html += `<h3>${this.escape(group.name)}</h3>`;
+      html += `<p class="segment-group-description">${this.escape(group.description)}</p>`;
+      html += '<table><thead><tr><th>Segment</th><th>Position</th><th>Name</th><th>Value</th></tr></thead><tbody>';
+      for (const segment of group.segments) {
+        const rows = segmentExplainer.explain(segment);
+        for (const row of rows) {
+          html += `<tr><td><strong>${this.escape(segment.tag)}</strong></td><td>${this.escape(`${segment.tag}${String(row.position).padStart(2, '0')}`)}</td><td>${this.escape(row.name)}</td><td><code>${this.escape(row.value)}</code></td></tr>`;
+        }
       }
+      html += '</tbody></table></div>';
     }
-    html += '</tbody></table></div>';
+    html += '</div>';
 
     html += '<div class="section"><h2>Validation Warnings</h2>';
     if (result.warnings.length > 0) {
