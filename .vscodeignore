@@ -1,0 +1,11 @@
+.git
+.gitignore
+.vscode
+out
+node_modules
+src
+tsconfig.json
+*.test.ts
+docs
+samples
+README.md

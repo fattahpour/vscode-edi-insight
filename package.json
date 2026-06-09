@@ -1,0 +1,51 @@
+{
+  "name": "edi-insight",
+  "displayName": "EDI Insight",
+  "description": "Analyze and visualize EDI payment/remittance messages with business-friendly explanations",
+  "version": "0.1.0",
+  "publisher": "peyman",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:ediInsight.analyze"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ediInsight.analyze",
+        "title": "EDI Insight: Analyze Current File"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "ediInsight.analyze",
+          "when": "resourceExtname =~ /\\.(edi|x12|txt)$/"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/runTest.js",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vscode/test-electron": "^2.3.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0"
+  }
+}
