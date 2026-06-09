@@ -1,90 +1,113 @@
-# EDI Insight
+<p align="center">
+  <img src="icon.png" width="128" height="128" alt="EDI Insight Logo">
+</p>
 
-A VS Code extension that analyzes EDI (Electronic Data Interchange) payment and remittance messages and explains them in business-friendly language.
+<h1 align="center">EDI Insight</h1>
 
-## Features
+<p align="center">
+  <strong>Analyze and visualize EDI payment/remittance messages with business-friendly explanations.</strong>
+</p>
 
-- **Automatic Message Analysis** - Parses X12 EDI messages and extracts key information
-- **Environment Detection** - Identifies if message is Test or Production
-- **Payment Channel Detection** - Determines ACH, Wire, BillPay, C2C, or other payment types
-- **Business Report Generation** - Shows which reports the message will generate
-- **Message Structure Graph** - Visual representation of message hierarchy using Mermaid
-- **Validation Warnings** - Highlights missing or invalid segments
-- **Segment-by-Segment Explanation** - Detailed breakdown of all segments, grouped by envelope/payment/parties/etc.
-- **Handoff & Cadence** - Detects downstream handoff reports and infers output cadence (one-time / daily / weekly / ...)
-- **Edit Source** - Edit the EDI inline, then Re-analyze instantly or Save back to the file
-- **JSON Output** - Raw analysis data for further processing
+<p align="center">
+  <a href="https://marketplace.visualstudio.com/items?itemName=fattahpour.edi-insight">
+    <img src="https://img.shields.io/visual-studio-marketplace/v/fattahpour.edi-insight?label=marketplace&color=0b5cad" alt="Marketplace Version">
+  </a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=fattahpour.edi-insight">
+    <img src="https://img.shields.io/visual-studio-marketplace/i/fattahpour.edi-insight?color=0b5cad" alt="Installs">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
+  </a>
+</p>
 
-## Privacy
+---
 
-**100% offline. No data ever leaves your machine.** The extension performs all
-parsing and analysis locally and makes **no network requests** — Mermaid is
-bundled inside the extension, and the results webview runs under a strict
-Content-Security-Policy (`default-src 'none'`) that blocks all outbound and
-inbound network traffic. Safe for sensitive payment/healthcare EDI.
+**EDI Insight** is a specialized VS Code extension designed to decode the complexity of X12 EDI messages. It transforms raw, cryptic EDI segments into clear, business-oriented insights and interactive visual diagrams — all while keeping your sensitive data completely secure.
 
-## Supported EDI Formats
+## 🔒 Privacy & Security First
 
-- **X12 820** - Payment Order / Remittance Advice
-- **X12 835** - Healthcare Claim Payment/Advice
-- **X12 997** - Functional Acknowledgment
-- **X12 824** - Application Advice
-- **Unknown X12** - Best-effort parsing and analysis
+**100% Offline. No network requests. Local analysis only.**
 
-## Usage
+Sensitive payment and healthcare data (PHI/PII) should never leave your environment. EDI Insight is built with a zero-trust architecture regarding your data:
+- **Local Parsing:** All analysis is performed entirely within your VS Code instance.
+- **No Telemetry:** We do not track your usage or collect data from your EDI files.
+- **Strict CSP:** The analysis webview runs under a restricted Content-Security-Policy that blocks all inbound and outbound network traffic.
+- **Bundled Dependencies:** Visualization tools like Mermaid.js are bundled locally.
 
-1. Open an EDI file (.edi, .x12, or .txt)
-2. Right-click in editor and select "EDI Insight: Analyze Current File"
-3. View comprehensive analysis in side panel
+---
 
-Or use command palette: `EDI Insight: Analyze Current File`
+## ⚡ Features at a Glance
 
-## Installation
+| Feature | Description |
+| :--- | :--- |
+| 🔍 **Automatic Analysis** | Instant parsing of X12 EDI messages with key info extraction. |
+| 🧪 **Env Detection** | Automatic identification of **Test** vs. **Production** messages. |
+| 💳 **Payment Channels** | Detection of **ACH, Wire, BillPay, C2C**, and more. |
+| 📊 **Business Reports** | Highlights exactly which downstream reports the message triggers. |
+| 🕸️ **Structure Graph** | Interactive **Mermaid** diagrams showing the message hierarchy. |
+| ⚠️ **Validation** | Real-time warnings for missing segments or invalid structures. |
+| 📝 **Smart Explainer** | Segment-by-segment breakdown grouped by business function. |
+| 🔄 **Handoff Insights** | Detection of downstream reports and anticipated output cadence. |
+| ✍️ **Edit & Sync** | Inline source editing with instant re-analysis or file saving. |
+| 📥 **Export Report** | Export analysis to **HTML, JSON, Markdown, or CSV**. |
+| 📋 **JSON Output** | Access raw analysis data for custom processing or automation. |
 
-1. Clone repository
-2. Run `npm install`
-3. Run `npm run compile`
-4. Run `npm run package` to generate .vsix file
-5. Install in VS Code via "Install from VSIX"
+---
 
-## Development
+## 🏗️ Supported Formats
 
-### Build
-```bash
-npm run compile
+| Format | Transaction Type | Use Case |
+| :--- | :--- | :--- |
+| **X12 820** | Payment Order / Remittance Advice | Payroll, vendor payments, insurance premiums. |
+| **X12 835** | Health Care Claim Payment/Advice | Insurance claim adjudications and payments. |
+| **X12 997** | Functional Acknowledgment | Confirmation of message receipt and syntax. |
+| **X12 824** | Application Advice | Detailed acceptance or rejection of business apps. |
+| **X12 Generic** | Any X12 Transaction | Best-effort parsing and structural visualization. |
+
+---
+
+## 🚀 Getting Started
+
+### Installation
+Search for **"EDI Insight"** in the VS Code Marketplace, or press `Ctrl+P` and run:
+```
+ext install fattahpour.edi-insight
 ```
 
-### Watch
-```bash
-npm run watch
-```
+### Usage
+1. **Open** any `.edi`, `.x12`, or `.txt` file containing X12 data.
+2. **Right-click** anywhere in the editor.
+3. Select **"EDI Insight: Analyze Current File"**.
+4. The analysis panel opens on the side with a comprehensive breakdown.
 
-### Test
-```bash
-npm test
-```
+---
 
-### Package
-```bash
-npm run package
-```
+## 🛠️ Development
 
-## Architecture
+Build and contribute from source:
 
-- **Parser** (`src/parser/`) - Tokenizes EDI messages and extracts segments
-- **Analyzer** (`src/analyzer/`) - Classifies messages, detects reports, validates structure
-- **WebView** (`src/webview/`) - Renders analysis results in VS Code UI
-- **Types** - Shared TypeScript types for type safety
+| Command | Description |
+| :--- | :--- |
+| `npm install` | Install dependencies. |
+| `npm run compile` | Build the TypeScript source. |
+| `npm run watch` | Incremental build (development mode). |
+| `npm test` | Execute the test suite. |
+| `npm run package` | Generate a `.vsix` bundle for installation. |
 
-## Extending
+### Architecture
 
-To add support for new X12 transaction types:
+| Directory | Responsibility |
+| :--- | :--- |
+| `src/parser/` | Tokenizer and EDI dictionary definitions. |
+| `src/analyzer/` | Business logic, classifiers, and validation rules. |
+| `src/webview/` | UI components and Mermaid integration. |
+| `src/exporter/` | HTML, JSON, Markdown, and CSV report generation. |
+| `src/types/` | Shared domain models and type definitions. |
 
-1. Add definition to `src/parser/ediDictionary.ts`
-2. Update classifier rules in `src/analyzer/messageClassifier.ts`
-3. Add report detection logic in `src/analyzer/reportDetector.ts`
-4. Add validation rules in `src/analyzer/validationService.ts`
+---
 
-## License
+## 📄 License
 
-MIT
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
+
+<p align="right">(<a href="#top">back to top</a>)</p>
