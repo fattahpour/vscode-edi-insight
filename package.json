@@ -29,13 +29,13 @@
     "color": "#0b5cad",
     "theme": "dark"
   },
-  "homepage": "https://github.com/peyman/vscode-edi-insight-plugin#readme",
+  "homepage": "https://github.com/fattahpour/vscode-edi-insight#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/peyman/vscode-edi-insight-plugin.git"
+    "url": "https://github.com/fattahpour/vscode-edi-insight.git"
   },
   "bugs": {
-    "url": "https://github.com/peyman/vscode-edi-insight-plugin/issues"
+    "url": "https://github.com/fattahpour/vscode-edi-insight/issues"
   },
   "activationEvents": [],
   "main": "./out/extension.js",
