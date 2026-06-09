@@ -11,3 +11,5 @@ docs
 .worktrees
 *.vsix
 samples
+.claude
+docs
