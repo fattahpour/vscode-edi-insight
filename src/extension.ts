@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { X12Parser, MessageExtractor } from './parser/x12Parser';
 import { MessageClassifier } from './analyzer/messageClassifier';
@@ -7,9 +8,12 @@ import { OutputProfiler } from './analyzer/outputProfiler';
 import { ValidationService } from './analyzer/validationService';
 import { HtmlRenderer } from './webview/renderHtml';
 import { AnalysisResult } from './types';
+import { ExportService, ExportFormat } from './exporter/exportService';
 
 let currentPanel: vscode.WebviewPanel | undefined;
 let currentSourceUri: vscode.Uri | undefined;
+let currentResult: AnalysisResult | undefined;
+let currentRawContent: string = '';
 
 export function analyze(content: string): AnalysisResult {
   const parsed = new X12Parser().parse(content);
@@ -44,8 +48,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     try {
       currentSourceUri = editor.document.uri;
+      currentResult = analyze(content);
+      currentRawContent = content;
       const panel = ensurePanel(context, editor.document.fileName);
-      panel.webview.html = new HtmlRenderer().render(analyze(content), content, buildAssets(context, panel.webview));
+      panel.webview.html = new HtmlRenderer().render(currentResult, content, buildAssets(context, panel.webview));
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Failed to analyze EDI file: ${errorMsg}`);
@@ -103,6 +109,11 @@ async function handleMessage(msg: { type?: string; content?: string }) {
   if (!currentPanel) { return; }
   const content = msg.content ?? '';
 
+  if (msg.type === 'export') {
+    await handleExport();
+    return;
+  }
+
   if (msg.type === 'reanalyze') {
     try {
       if (!content.trim()) { throw new Error('Source is empty.'); }
@@ -136,6 +147,47 @@ async function handleMessage(msg: { type?: string; content?: string }) {
       const message = error instanceof Error ? error.message : String(error);
       currentPanel.webview.postMessage({ type: 'error', message });
     }
+  }
+}
+
+async function handleExport(): Promise<void> {
+  if (!currentPanel || !currentResult) { return; }
+
+  const formatItems: Array<{ label: string; description: string; format: ExportFormat }> = [
+    { label: 'HTML', description: 'Standalone HTML file with embedded styles', format: 'html' },
+    { label: 'JSON', description: 'Full analysis result as structured JSON', format: 'json' },
+    { label: 'Markdown', description: 'Structured markdown summary with tables', format: 'md' },
+    { label: 'CSV', description: 'Tabular data (parties, remittance, segments)', format: 'csv' },
+  ];
+
+  const picked = await vscode.window.showQuickPick(formatItems, { placeHolder: 'Choose export format' });
+  if (!picked) { return; }
+
+  const baseName = currentSourceUri
+    ? path.basename(currentSourceUri.fsPath).replace(/\.[^.]+$/, '')
+    : 'edi-analysis';
+
+  const filterMap: Record<ExportFormat, Record<string, string[]>> = {
+    html: { 'HTML Files': ['html'] },
+    json: { 'JSON Files': ['json'] },
+    md:   { 'Markdown Files': ['md'] },
+    csv:  { 'CSV Files': ['csv'] },
+  };
+
+  const defaultUri = currentSourceUri
+    ? vscode.Uri.file(path.join(path.dirname(currentSourceUri.fsPath), `${baseName}.analysis.${picked.format}`))
+    : undefined;
+
+  const saveUri = await vscode.window.showSaveDialog({ defaultUri, filters: filterMap[picked.format] });
+  if (!saveUri) { return; }
+
+  try {
+    const output = new ExportService().export(picked.format, currentResult, currentRawContent, baseName);
+    await vscode.workspace.fs.writeFile(saveUri, Buffer.from(output, 'utf8'));
+    currentPanel.webview.postMessage({ type: 'exported', path: saveUri.fsPath });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    currentPanel.webview.postMessage({ type: 'error', message });
   }
 }
 
