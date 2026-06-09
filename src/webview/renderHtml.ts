@@ -14,7 +14,7 @@ export class HtmlRenderer {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EDI Insight - Analysis Result</title>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
@@ -49,7 +49,7 @@ export class HtmlRenderer {
     .report-reason { color: #7f8c8d; font-size: 13px; margin-bottom: 10px; }
     .report-fields { color: #34495e; font-size: 13px; margin-bottom: 8px; }
     .report-example { background: white; padding: 10px; border-left: 3px solid #3498db; font-family: monospace; font-size: 12px; overflow-x: auto; }
-    .code-block { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 4px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 13px; margin-bottom: 15px; }
+    .code-block { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 4px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 13px; margin-bottom: 15px; white-space: pre-wrap; word-break: break-word; line-height: 1.4; tab-size: 2; }
     .no-data { color: #7f8c8d; font-style: italic; }
     .badge { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-right: 5px; margin-bottom: 5px; }
     .badge-segment { background: #ecf0f1; color: #2c3e50; }
@@ -110,7 +110,7 @@ export class HtmlRenderer {
     html += `<div class="summary-card method"><div class="summary-label">Trace Number</div><div class="summary-value">${this.escape(result.extracted.traceNumber || 'N/A')}</div></div>`;
     html += '</div></div>';
 
-    html += '<div class="section"><h2>Message Structure</h2><div class="mermaid">' + diagram + '</div></div>';
+    html += '<div class="section"><h2>Message Structure</h2><div class="mermaid"></div><pre class="mermaid-source" style="display:none">' + this.escape(diagram) + '</pre></div>';
 
     html += '<div class="section"><h2>Parties</h2>';
     if (result.extracted.parties.length > 0) {
@@ -199,14 +199,27 @@ export class HtmlRenderer {
 
     html += `</div>
   <script>
-    mermaid.initialize({ startOnLoad: true, theme: 'default' });
-    const diagramCode = \`${diagram.replace(/`/g, '\\`')}\`;
-    mermaid.render('mermaidDiagram', diagramCode).then(({ svg }) => {
-      const mermaidDiv = document.querySelector('.mermaid');
-      mermaidDiv.innerHTML = svg;
-    }).catch(err => {
-      console.error('Mermaid error:', err);
-    });
+    (function () {
+      function draw() {
+        var src = document.querySelector('.mermaid-source');
+        var target = document.querySelector('.mermaid');
+        if (!src || !target || typeof mermaid === 'undefined') { return; }
+        mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+        var code = src.textContent || '';
+        mermaid.render('ediGraph', code).then(function (res) {
+          target.innerHTML = res.svg;
+        }).catch(function (err) {
+          target.innerHTML = '<pre style="color:#c0392b;white-space:pre-wrap">Graph render error: ' +
+            String(err && err.message ? err.message : err) + '</pre>';
+          console.error('Mermaid error:', err);
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', draw);
+      } else {
+        draw();
+      }
+    })();
   </script>
 </body>
 </html>`;
