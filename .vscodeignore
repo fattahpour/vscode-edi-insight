@@ -1,11 +1,10 @@
 .git
 .gitignore
 .vscode
-out
 node_modules
 src
 tsconfig.json
-*.test.ts
+out/test/**
 docs
-samples
-README.md
+.gitattributes
+**/*.map
