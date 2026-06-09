@@ -8,3 +8,6 @@ out/test/**
 docs
 .gitattributes
 **/*.map
+.worktrees
+*.vsix
+samples
