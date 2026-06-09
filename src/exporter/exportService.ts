@@ -161,5 +161,7 @@ export class ExportService {
     return lines.join('\n');
   }
 
-  private toHtml(_result: AnalysisResult, _rawContent: string): string { return ''; }
+  private toHtml(result: AnalysisResult, rawContent: string): string {
+    return new HtmlRenderer().renderStandalone(result, rawContent);
+  }
 }

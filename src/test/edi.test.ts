@@ -181,6 +181,17 @@ test('ExportService json produces valid JSON matching AnalysisResult shape', () 
   assert.ok(parsed.extracted.parties.length > 0);
 });
 
+test('ExportService html delegates to renderStandalone', () => {
+  const svc = new ExportService();
+  const raw = readSample('820-billpay-test.edi');
+  const result = buildResult('820-billpay-test.edi');
+  const html = svc.export('html', result, raw, 'test');
+  assert.ok(html.startsWith('<!DOCTYPE html>'), 'is full HTML document');
+  assert.ok(!html.includes('acquireVsCodeApi'), 'no VS Code API');
+  assert.ok(html.includes('cdn.jsdelivr.net'), 'loads Mermaid from CDN');
+  assert.ok(html.includes('ABC BILLPAY SERVICE'), 'contains party data');
+});
+
 test('HtmlRenderer renderStandalone produces standalone HTML without VS Code dependencies', () => {
   const raw = readSample('820-billpay-test.edi');
   const result = buildResult('820-billpay-test.edi');
