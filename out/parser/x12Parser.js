@@ -12,18 +12,28 @@ class X12Parser {
             element: '*',
             subElement: ':'
         };
-        if (isaSegment.length >= 104) {
+        // ISA segment: element separator at position 3
+        if (isaSegment.length >= 4) {
             separators.element = isaSegment[3];
-            separators.subElement = isaSegment[103];
+            separators.subElement = isaSegment.length > 104 ? isaSegment[104] : ':';
         }
         const segmentStrings = content.split(separators.segment).filter(s => s.trim());
         const segments = [];
         for (const segmentString of segmentStrings) {
             if (!segmentString.trim())
                 continue;
-            const tag = segmentString.substring(0, 3);
-            const elementsString = segmentString.substring(3);
-            const elements = elementsString.split(separators.element);
+            // Extract tag: first 3 characters, removing separator if present
+            let tag = segmentString.substring(0, 3);
+            if (tag.includes(separators.element)) {
+                tag = tag.substring(0, tag.indexOf(separators.element));
+            }
+            // Get elements: start after the tag
+            let elementsPart = segmentString.substring(3);
+            // Skip the element separator if not ISA
+            if (tag !== 'ISA' && elementsPart.startsWith(separators.element)) {
+                elementsPart = elementsPart.substring(1);
+            }
+            const elements = elementsPart.split(separators.element);
             segments.push({
                 tag,
                 elements,
@@ -66,32 +76,32 @@ class MessageExtractor {
         const dtmSegments = segments.filter(s => s.tag === 'DTM');
         const refSegments = segments.filter(s => s.tag === 'REF');
         const extracted = {
-            senderId: isaSegment ? isaSegment.elements[5].trim() : '',
-            receiverId: isaSegment ? isaSegment.elements[7].trim() : '',
-            testProduction: isaSegment ? isaSegment.elements[14].trim() : 'Unknown',
-            functionalGroupCode: gsSegment ? gsSegment.elements[0].trim() : '',
-            transactionType: stSegment ? stSegment.elements[0].trim() : '',
-            transactionId: stSegment ? stSegment.elements[1].trim() : '',
-            segmentCount: seSegment ? parseInt(seSegment.elements[0]) : 0,
-            paymentAmount: bprSegment ? bprSegment.elements[1].trim() : undefined,
-            paymentMethod: bprSegment ? bprSegment.elements[3].trim() : undefined,
-            paymentDate: bprSegment ? this.formatDate(bprSegment.elements[12]) : undefined,
-            paymentFormat: bprSegment ? bprSegment.elements[4].trim() : undefined,
-            traceNumber: trnSegments.length > 0 ? trnSegments[0].elements[1].trim() : undefined,
+            senderId: isaSegment && isaSegment.elements[5] ? isaSegment.elements[5].trim() : '',
+            receiverId: isaSegment && isaSegment.elements[7] ? isaSegment.elements[7].trim() : '',
+            testProduction: isaSegment && isaSegment.elements[14] ? isaSegment.elements[14].trim() : 'Unknown',
+            functionalGroupCode: gsSegment && gsSegment.elements[0] ? gsSegment.elements[0].trim() : '',
+            transactionType: stSegment && stSegment.elements[0] ? stSegment.elements[0].trim() : '',
+            transactionId: stSegment && stSegment.elements[1] ? stSegment.elements[1].trim() : '',
+            segmentCount: seSegment && seSegment.elements[0] ? parseInt(seSegment.elements[0]) : 0,
+            paymentAmount: bprSegment && bprSegment.elements[1] ? bprSegment.elements[1].trim() : undefined,
+            paymentMethod: bprSegment && bprSegment.elements[3] ? bprSegment.elements[3].trim() : undefined,
+            paymentDate: bprSegment && bprSegment.elements[12] ? this.formatDate(bprSegment.elements[12]) : undefined,
+            paymentFormat: bprSegment && bprSegment.elements[4] ? bprSegment.elements[4].trim() : undefined,
+            traceNumber: trnSegments.length > 0 && trnSegments[0].elements[1] ? trnSegments[0].elements[1].trim() : undefined,
             parties: n1Segments.map(seg => ({
-                code: seg.elements[0].trim(),
-                name: seg.elements[1].trim()
+                code: seg.elements[0] ? seg.elements[0].trim() : '',
+                name: seg.elements[1] ? seg.elements[1].trim() : ''
             })),
             remittanceDetails: rmrSegments.map(seg => ({
                 invoiceNumber: seg.elements[1]?.trim(),
                 paidAmount: seg.elements[3]?.trim()
             })),
             dates: dtmSegments.map(seg => ({
-                qualifier: seg.elements[0].trim(),
-                date: this.formatDate(seg.elements[1])
+                qualifier: seg.elements[0] ? seg.elements[0].trim() : '',
+                date: seg.elements[1] ? this.formatDate(seg.elements[1]) : ''
             })),
             references: refSegments.map(seg => ({
-                type: seg.elements[0].trim(),
+                type: seg.elements[0] ? seg.elements[0].trim() : '',
                 value: seg.elements[1]?.trim() || ''
             })),
             allSegments: segments
