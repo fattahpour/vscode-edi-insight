@@ -8,6 +8,9 @@ import { ReportDetector } from '../analyzer/reportDetector';
 import { SegmentGrouper } from '../analyzer/segmentGrouper';
 import { ValidationService } from '../analyzer/validationService';
 import { MessageExtractor, X12Parser } from '../parser/x12Parser';
+import { ReportDetector as ReportDetectorForRender } from '../analyzer/reportDetector';
+import { OutputProfiler as OutputProfilerForRender } from '../analyzer/outputProfiler';
+import { HtmlRenderer } from '../webview/renderHtml';
 
 const samplesDirectory = path.resolve(__dirname, '../../samples');
 const parser = new X12Parser();
@@ -126,4 +129,27 @@ test('SegmentGrouper places ISA and IEA in the interchange envelope', () => {
 
   assert.ok(interchangeEnvelope);
   assert.deepEqual(interchangeEnvelope.segments.map(segment => segment.tag), ['ISA', 'IEA']);
+});
+
+test('HtmlRenderer embeds editable source and edit controls', () => {
+  const raw = readSample('820-billpay-test.edi');
+  const extracted = extractSample('820-billpay-test.edi');
+  const classification = classifier.classify(extracted);
+  const reports = new ReportDetectorForRender().detect(extracted, classification);
+  const result = {
+    classification,
+    extracted,
+    reports,
+    warnings: new ValidationService().validate(extracted),
+    segmentGroups: new SegmentGrouper().group(extracted.allSegments),
+    outputProfile: new OutputProfilerForRender().profile(extracted, classification, reports)
+  };
+
+  const html = new HtmlRenderer().render(result, raw);
+
+  assert.ok(html.includes('id="ediSource"'), 'has editable source textarea');
+  assert.ok(html.includes('Edit Source'), 'has Edit Source button');
+  assert.ok(html.includes('acquireVsCodeApi'), 'wires the VS Code messaging API');
+  assert.ok(html.includes('ABC BILLPAY SERVICE'), 'embeds the raw EDI content');
+  assert.ok(html.includes("type:'reanalyze'") || html.includes('type: \'reanalyze\''), 'posts reanalyze messages');
 });

@@ -3,12 +3,188 @@ import { SegmentExplainer } from '../analyzer/segmentExplainer';
 import { MermaidGraphGenerator } from './mermaidGraph';
 
 export class HtmlRenderer {
-  render(result: AnalysisResult): string {
+  render(result: AnalysisResult, rawContent: string = ''): string {
     const graphGen = new MermaidGraphGenerator();
     const segmentExplainer = new SegmentExplainer();
     const diagram = graphGen.generate(result.extracted);
+    const e = (t: string | undefined) => this.escape(t);
 
-    let html = `<!DOCTYPE html>
+    // --- Verdict chips (at-a-glance summary in the toolbar) ---
+    const env = result.classification.environment;
+    const envClass = env === 'Test' ? 'chip-test' : env === 'Production' ? 'chip-prod' : 'chip-unknown';
+    const handoff = result.outputProfile.hasHandoffReport;
+    const chips =
+      `<span class="chip chip-accent">${e(result.classification.messageCode)} · ${e(result.classification.description.replace(/^X12 \d+ - /, ''))}</span>` +
+      `<span class="chip ${envClass}">${e(env)}</span>` +
+      `<span class="chip">${e(result.classification.paymentChannel)}</span>` +
+      `<span class="chip ${handoff ? 'chip-yes' : 'chip-no'}">Handoff: ${handoff ? 'YES' : 'NO'}</span>` +
+      `<span class="chip">${e(result.outputProfile.cadence)}</span>`;
+
+    // --- Sections ---
+    const sections: string[] = [];
+
+    sections.push(this.section('Message Overview', true,
+      '<div class="grid">' +
+      this.box('Message Type', e(result.classification.messageType)) +
+      this.box('Description', e(result.classification.description)) +
+      this.box('Sender ID', e(result.extracted.senderId || 'N/A')) +
+      this.box('Receiver ID', e(result.extracted.receiverId || 'N/A')) +
+      '</div>'));
+
+    sections.push(this.section('Environment', true,
+      `<div class="grid"><div class="box accent-${env.toLowerCase()}"><div class="label">Status</div><div class="value">${e(env)}</div></div></div>`));
+
+    sections.push(this.section('Payment Channel Detection', true,
+      '<div class="grid">' +
+      this.box('Detected Channel', e(result.classification.paymentChannel)) +
+      this.box('Payment Method', e(result.extracted.paymentMethod || 'N/A')) +
+      this.box('Payment Format', e(result.extracted.paymentFormat || 'N/A')) +
+      '</div>'));
+
+    let reportsHtml = '';
+    if (result.reports.length > 0) {
+      reportsHtml += '<ul class="report-list">';
+      for (const report of result.reports) {
+        reportsHtml += '<li><div class="report-title">' + e(report.name) + '</div>';
+        reportsHtml += '<div class="muted"><strong>Reason:</strong> ' + e(report.reason) + '</div>';
+        reportsHtml += '<div class="muted"><strong>Source Segments:</strong> ' +
+          report.sourceSegments.map(s => `<span class="badge">${e(s)}</span>`).join('') + '</div>';
+        reportsHtml += '<div class="muted"><strong>Key Fields:</strong> ' + e(report.keyFields.join(', ')) + '</div>';
+        reportsHtml += '<div class="report-example"><strong>Example Output:</strong><br/>' + e(report.exampleRow) + '</div></li>';
+      }
+      reportsHtml += '</ul>';
+    } else {
+      reportsHtml = '<p class="no-data">No reports detected for this message.</p>';
+    }
+    sections.push(this.section('Business Report Detection', true, reportsHtml));
+
+    let profHtml = '<div class="grid">';
+    profHtml += '<div class="box"><div class="label">Downstream Handoff Report</div>' +
+      `<div style="margin:6px 0"><span class="badge ${handoff ? 'badge-yes' : 'badge-no'}">${handoff ? 'YES' : 'NO'}</span></div>` +
+      '<div class="muted"><strong>Handoff Reports:</strong></div>' +
+      (result.outputProfile.handoffReports.length
+        ? '<ul>' + result.outputProfile.handoffReports.map(r => `<li>${e(r)}</li>`).join('') + '</ul>'
+        : '<p class="no-data">None.</p>') +
+      '<div class="muted"><strong>Status Reports:</strong></div>' +
+      (result.outputProfile.statusReports.length
+        ? '<ul>' + result.outputProfile.statusReports.map(r => `<li>${e(r)}</li>`).join('') + '</ul>'
+        : '<p class="no-data">None.</p>') +
+      '</div>';
+    profHtml += '<div class="box"><div class="label">Estimated Cadence</div>' +
+      `<div class="cadence">${e(result.outputProfile.cadence)}</div>` +
+      `<span class="badge badge-info">${e(result.outputProfile.confidence)} confidence</span>` +
+      `<p class="muted" style="margin-top:8px"><strong>Estimated:</strong> ${e(result.outputProfile.cadenceReason)}</p></div>`;
+    profHtml += '</div>';
+    sections.push(this.section('Handoff &amp; Output Cadence', true, profHtml));
+
+    sections.push(this.section('Payment Summary', true,
+      '<div class="grid">' +
+      this.summaryCard('Amount', e(result.extracted.paymentAmount || 'N/A')) +
+      this.summaryCard('Payment Date', e(result.extracted.paymentDate || 'N/A')) +
+      this.summaryCard('Trace Number', e(result.extracted.traceNumber || 'N/A')) +
+      '</div>'));
+
+    sections.push(this.section('Message Structure', false,
+      '<div class="mermaid"></div><pre class="mermaid-source" style="display:none">' + e(diagram) + '</pre>'));
+
+    sections.push(this.section('Parties', false,
+      result.extracted.parties.length
+        ? this.table(['Code', 'Name'], result.extracted.parties.map(p => [e(p.code), e(p.name)]))
+        : '<p class="no-data">No party information found.</p>'));
+
+    const contacts = result.extracted.contacts ?? [];
+    sections.push(this.section('Contacts', false,
+      contacts.length
+        ? this.table(['Name', 'Communication', 'Alternate Communication'], contacts.map(c => [
+            e(c.name || 'N/A'),
+            e([c.communicationQualifier, c.communicationNumber].filter(Boolean).join(': ') || 'N/A'),
+            e([c.alternateCommunicationQualifier, c.alternateCommunicationNumber].filter(Boolean).join(': ') || 'N/A')
+          ]))
+        : '<p class="no-data">No contact information found.</p>'));
+
+    const entities = result.extracted.entities ?? [];
+    sections.push(this.section('Entities', false,
+      entities.length
+        ? this.table(['Assigned Number', 'Entity Code', 'Identification', 'Additional Entity Code'], entities.map(en => [
+            e(en.assignedNumber || 'N/A'),
+            e(en.entityIdentifierCode || 'N/A'),
+            e([en.identificationCodeQualifier, en.identificationCode].filter(Boolean).join(': ') || 'N/A'),
+            e(en.additionalEntityIdentifierCode || 'N/A')
+          ]))
+        : '<p class="no-data">No entity information found.</p>'));
+
+    const notes = result.extracted.notes ?? [];
+    sections.push(this.section('Notes', false,
+      notes.length
+        ? this.table(['Reference Code', 'Text'], notes.map(n => [e(n.referenceCode || 'N/A'), e(n.text)]))
+        : '<p class="no-data">No notes found.</p>'));
+
+    sections.push(this.section('Invoice / Remittance Details', false,
+      result.extracted.remittanceDetails.length
+        ? this.table(['Invoice Number', 'Paid Amount'], result.extracted.remittanceDetails.map(d => [e(d.invoiceNumber || 'N/A'), e(d.paidAmount || 'N/A')]))
+        : '<p class="no-data">No remittance details found.</p>'));
+
+    let segHtml = '';
+    for (const group of result.segmentGroups) {
+      segHtml += '<div class="segment-group"><h3>' + e(group.name) + '</h3>';
+      segHtml += '<p class="muted">' + e(group.description) + '</p>';
+      const rows: string[][] = [];
+      for (const segment of group.segments) {
+        for (const row of segmentExplainer.explain(segment)) {
+          rows.push([
+            `<strong>${e(segment.tag)}</strong>`,
+            e(`${segment.tag}${String(row.position).padStart(2, '0')}`),
+            e(row.name),
+            `<code>${e(row.value)}</code>`
+          ]);
+        }
+      }
+      segHtml += this.table(['Segment', 'Position', 'Name', 'Value'], rows, true);
+      segHtml += '</div>';
+    }
+    sections.push(this.section('Segment Explanation', false, segHtml));
+
+    let warnHtml = '';
+    if (result.warnings.length) {
+      for (const w of result.warnings) {
+        const icon = w.severity === 'error' ? '❌ Error' : w.severity === 'warning' ? '⚠️ Warning' : 'ℹ️ Info';
+        warnHtml += `<div class="warning ${w.severity}"><div class="warning-title">${icon}: ${e(w.message)}</div><div class="muted">Affected: ${e(w.affectedSegments.join(', '))}</div></div>`;
+      }
+    } else {
+      warnHtml = '<p class="no-data">✅ No validation warnings found.</p>';
+    }
+    sections.push(this.section('Validation Warnings', false, warnHtml));
+
+    sections.push(this.section('Raw JSON Output', false,
+      '<pre class="code-block" id="jsonOutput">' + e(JSON.stringify(result, null, 2)) + '</pre>'));
+
+    return this.shell(chips, sections.join('\n'), e(rawContent));
+  }
+
+  // ---- building blocks ----
+
+  private section(title: string, open: boolean, inner: string): string {
+    return `<details class="section"${open ? ' open' : ''}><summary><h2>${title}</h2></summary><div class="section-body">${inner}</div></details>`;
+  }
+
+  private box(label: string, value: string): string {
+    return `<div class="box"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+  }
+
+  private summaryCard(label: string, value: string): string {
+    return `<div class="box summary"><div class="label">${label}</div><div class="value big">${value}</div></div>`;
+  }
+
+  private table(headers: string[], rows: string[][], rawCells = false): string {
+    let h = '<table><thead><tr>' + headers.map(x => `<th>${x}</th>`).join('') + '</tr></thead><tbody>';
+    for (const r of rows) {
+      h += '<tr>' + r.map(c => `<td>${rawCells ? c : c}</td>`).join('') + '</tr>';
+    }
+    return h + '</tbody></table>';
+  }
+
+  private shell(chips: string, sections: string, rawContentEscaped: string): string {
+    return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -16,266 +192,168 @@ export class HtmlRenderer {
   <title>EDI Insight - Analysis Result</title>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"></script>
   <style>
+    :root {
+      --bg: var(--vscode-editor-background, #1e1e1e);
+      --fg: var(--vscode-editor-foreground, #d4d4d4);
+      --muted: var(--vscode-descriptionForeground, #9aa0a6);
+      --panel: var(--vscode-sideBar-background, rgba(127,127,127,0.08));
+      --border: var(--vscode-panel-border, rgba(127,127,127,0.3));
+      --accent: var(--vscode-textLink-foreground, #3794ff);
+      --code-bg: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.12));
+      --btn-bg: var(--vscode-button-background, #0e639c);
+      --btn-fg: var(--vscode-button-foreground, #fff);
+      --btn-hover: var(--vscode-button-hoverBackground, #1177bb);
+      --btn2-bg: var(--vscode-button-secondaryBackground, rgba(127,127,127,0.25));
+      --btn2-fg: var(--vscode-button-secondaryForeground, var(--fg));
+      --input-bg: var(--vscode-input-background, #2d2d2d);
+      --input-fg: var(--vscode-input-foreground, #d4d4d4);
+      --input-border: var(--vscode-input-border, var(--border));
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
-    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-    .section { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    h1 { color: #2c3e50; margin-bottom: 10px; font-size: 28px; }
-    h2 { color: #34495e; margin-top: 20px; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 10px; font-size: 20px; }
-    .header-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
-    .info-box { padding: 15px; border-left: 4px solid #3498db; background: #ecf0f1; border-radius: 4px; }
-    .info-label { font-weight: bold; color: #2c3e50; margin-bottom: 5px; font-size: 12px; text-transform: uppercase; }
-    .info-value { color: #34495e; font-size: 16px; word-break: break-all; }
-    .status-test { border-left-color: #f39c12; }
-    .status-production { border-left-color: #27ae60; }
-    .status-unknown { border-left-color: #95a5a6; }
-    .warning { padding: 15px; margin-bottom: 15px; border-left: 4px solid; border-radius: 4px; background-color: #fef5e7; }
-    .warning.error { border-left-color: #e74c3c; background-color: #fadbd8; }
-    .warning.info { border-left-color: #3498db; background-color: #d6eaf8; }
-    .warning-title { font-weight: bold; margin-bottom: 5px; }
-    .warning.error .warning-title { color: #c0392b; }
-    .warning.warning .warning-title { color: #d68910; }
-    .warning.info .warning-title { color: #2980b9; }
-    .warning-segments { font-size: 12px; margin-top: 5px; font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 14px; }
-    thead { background: #34495e; color: white; }
-    th { padding: 12px; text-align: left; font-weight: bold; }
-    td { padding: 12px; border-bottom: 1px solid #ecf0f1; }
-    tbody tr:hover { background: #f8f9fa; }
-    .mermaid { display: flex; justify-content: center; margin: 20px 0; overflow-x: auto; }
+    body { font-family: var(--vscode-font-family, -apple-system, "Segoe UI", sans-serif); font-size: var(--vscode-font-size, 13px); line-height: 1.55; color: var(--fg); background: var(--bg); }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 16px 40px; }
+
+    .toolbar { position: sticky; top: 0; z-index: 50; background: var(--bg); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .toolbar .brand { font-weight: 700; font-size: 15px; color: var(--fg); margin-right: 4px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+    .chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 11px; background: var(--code-bg); color: var(--fg); border: 1px solid var(--border); white-space: nowrap; }
+    .chip-accent { background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: var(--accent); }
+    .chip-test { background: rgba(243,156,18,0.18); border-color: #f39c12; }
+    .chip-prod { background: rgba(39,174,96,0.18); border-color: #27ae60; }
+    .chip-unknown { opacity: 0.85; }
+    .chip-yes { background: rgba(39,174,96,0.18); border-color: #27ae60; }
+    .chip-no { background: rgba(231,76,60,0.18); border-color: #e74c3c; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    button { font-family: inherit; font-size: 12px; cursor: pointer; border: none; border-radius: 4px; padding: 5px 12px; background: var(--btn-bg); color: var(--btn-fg); }
+    button:hover { background: var(--btn-hover); }
+    button.secondary { background: var(--btn2-bg); color: var(--btn2-fg); }
+
+    .edit-panel { display: none; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; margin: 14px 0; }
+    .edit-panel.visible { display: block; }
+    .edit-panel h3 { font-size: 14px; margin-bottom: 8px; }
+    #ediSource { width: 100%; min-height: 200px; resize: vertical; font-family: var(--vscode-editor-font-family, "Courier New", monospace); font-size: 12px; background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); border-radius: 4px; padding: 10px; }
+    .edit-actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+    #editStatus { font-size: 12px; }
+    #editStatus.ok { color: #27ae60; }
+    #editStatus.err { color: #e74c3c; }
+
+    h1 { font-size: 22px; margin: 18px 0 4px; }
+    .subtitle { color: var(--muted); margin-bottom: 8px; }
+    details.section { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 12px; }
+    details.section > summary { cursor: pointer; list-style: none; padding: 12px 16px; user-select: none; }
+    details.section > summary::-webkit-details-marker { display: none; }
+    details.section > summary h2 { display: inline; font-size: 16px; color: var(--fg); border: none; }
+    details.section > summary::before { content: '▸'; color: var(--muted); margin-right: 8px; font-size: 11px; }
+    details.section[open] > summary::before { content: '▾'; }
+    .section-body { padding: 4px 16px 16px; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .box { padding: 12px; background: var(--code-bg); border-left: 3px solid var(--accent); border-radius: 4px; }
+    .box.summary { border-left-width: 4px; }
+    .box.accent-test { border-left-color: #f39c12; }
+    .box.accent-production { border-left-color: #27ae60; }
+    .box.accent-unknown { border-left-color: var(--muted); }
+    .label { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+    .value { font-size: 15px; word-break: break-word; }
+    .value.big { font-size: 22px; font-weight: 700; }
+    .cadence { font-size: 24px; font-weight: 700; margin: 4px 0 8px; }
+    .muted { color: var(--muted); font-size: 13px; margin: 6px 0; }
+    .no-data { color: var(--muted); font-style: italic; }
+
+    table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+    th { text-align: left; padding: 9px 10px; border-bottom: 2px solid var(--border); color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    code { font-family: var(--vscode-editor-font-family, monospace); background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; margin: 0 4px 4px 0; background: var(--code-bg); border: 1px solid var(--border); }
+    .badge-yes { background: rgba(39,174,96,0.18); border-color: #27ae60; color: var(--fg); }
+    .badge-no { background: rgba(231,76,60,0.18); border-color: #e74c3c; color: var(--fg); }
+    .badge-info { background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: var(--accent); }
+
     .report-list { list-style: none; }
-    .report-list li { padding: 15px; margin-bottom: 15px; border: 1px solid #bdc3c7; border-radius: 4px; background: #f8f9fa; }
-    .report-title { font-weight: bold; color: #2c3e50; margin-bottom: 8px; font-size: 16px; }
-    .report-reason { color: #7f8c8d; font-size: 13px; margin-bottom: 10px; }
-    .report-fields { color: #34495e; font-size: 13px; margin-bottom: 8px; }
-    .report-example { background: white; padding: 10px; border-left: 3px solid #3498db; font-family: monospace; font-size: 12px; overflow-x: auto; }
-    .code-block { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 4px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 13px; margin-bottom: 15px; white-space: pre-wrap; word-break: break-word; line-height: 1.4; tab-size: 2; }
-    .no-data { color: #7f8c8d; font-style: italic; }
-    .badge { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-right: 5px; margin-bottom: 5px; }
-    .badge-segment { background: #ecf0f1; color: #2c3e50; }
-    .badge-yes { background: #d5f5e3; color: #1e8449; }
-    .badge-no { background: #fadbd8; color: #c0392b; }
-    .badge-confidence { background: #d6eaf8; color: #2471a3; }
-    .output-profile { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 15px; }
-    .output-card { padding: 15px; background: #f8f9fa; border: 1px solid #ecf0f1; border-radius: 4px; }
-    .output-card ul { margin: 8px 0 0 20px; }
-    .cadence-value { color: #2c3e50; font-size: 28px; font-weight: bold; margin: 4px 0 8px; }
-    .estimated-reason { color: #5d6d7e; margin-top: 8px; }
-    .segment-group { margin-top: 24px; }
-    .segment-group:first-of-type { margin-top: 0; }
-    .segment-group h3 { color: #2c3e50; font-size: 17px; margin-bottom: 4px; }
-    .segment-group-description { color: #7f8c8d; font-size: 13px; margin-bottom: 10px; }
-    .payment-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px; }
-    .summary-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; }
-    .summary-card.amount { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-    .summary-card.date { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-    .summary-card.method { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
-    .summary-label { font-size: 12px; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px; }
-    .summary-value { font-size: 24px; font-weight: bold; word-break: break-all; }
+    .report-list li { padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--code-bg); }
+    .report-title { font-weight: 700; margin-bottom: 6px; }
+    .report-example { background: var(--bg); padding: 8px 10px; border-left: 3px solid var(--accent); font-family: monospace; font-size: 12px; overflow-x: auto; margin-top: 6px; }
+
+    .mermaid { display: flex; justify-content: center; margin: 12px 0; overflow-x: auto; }
+    .segment-group { margin-top: 18px; }
+    .segment-group:first-child { margin-top: 0; }
+    .segment-group h3 { font-size: 15px; margin-bottom: 2px; }
+
+    .warning { padding: 12px; margin-bottom: 10px; border-left: 4px solid var(--muted); border-radius: 4px; background: var(--code-bg); }
+    .warning.error { border-left-color: #e74c3c; }
+    .warning.warning { border-left-color: #f39c12; }
+    .warning.info { border-left-color: var(--accent); }
+    .warning-title { font-weight: 700; margin-bottom: 4px; }
+
+    .code-block { background: var(--code-bg); color: var(--fg); padding: 14px; border-radius: 4px; overflow-x: auto; font-family: var(--vscode-editor-font-family, "Courier New", monospace); font-size: 12px; white-space: pre-wrap; word-break: break-word; line-height: 1.4; tab-size: 2; }
   </style>
 </head>
 <body>
+  <div class="toolbar">
+    <span class="brand">📊 EDI Insight</span>
+    <div class="chips">${chips}</div>
+    <div class="actions">
+      <button id="btnEdit" class="secondary">Edit Source</button>
+      <button id="btnCopy" class="secondary">Copy JSON</button>
+      <button id="btnExpand" class="secondary">Expand all</button>
+      <button id="btnCollapse" class="secondary">Collapse all</button>
+    </div>
+  </div>
   <div class="container">
-    <div class="section"><h1>📊 EDI Message Analysis</h1><p>Detailed analysis of EDI payment/remittance message</p></div>`;
-
-    html += '<div class="section"><h2>Message Overview</h2><div class="header-info">';
-    html += `<div class="info-box"><div class="info-label">Message Type</div><div class="info-value">${this.escape(result.classification.messageType)}</div></div>`;
-    html += `<div class="info-box"><div class="info-label">Description</div><div class="info-value">${this.escape(result.classification.description)}</div></div>`;
-    html += `<div class="info-box"><div class="info-label">Sender ID</div><div class="info-value">${this.escape(result.extracted.senderId || 'N/A')}</div></div>`;
-    html += `<div class="info-box"><div class="info-label">Receiver ID</div><div class="info-value">${this.escape(result.extracted.receiverId || 'N/A')}</div></div>`;
-    html += '</div></div>';
-
-    html += '<div class="section"><h2>Environment</h2><div class="header-info">';
-    html += `<div class="info-box status-${result.classification.environment.toLowerCase()}"><div class="info-label">Status</div><div class="info-value">${result.classification.environment}</div></div>`;
-    html += '</div></div>';
-
-    html += '<div class="section"><h2>Payment Channel Detection</h2><div class="header-info">';
-    html += `<div class="info-box"><div class="info-label">Detected Channel</div><div class="info-value">${this.escape(result.classification.paymentChannel)}</div></div>`;
-    html += `<div class="info-box"><div class="info-label">Payment Method</div><div class="info-value">${this.escape(result.extracted.paymentMethod || 'N/A')}</div></div>`;
-    html += `<div class="info-box"><div class="info-label">Payment Format</div><div class="info-value">${this.escape(result.extracted.paymentFormat || 'N/A')}</div></div>`;
-    html += '</div></div>';
-
-    html += '<div class="section"><h2>Business Report Detection</h2>';
-    if (result.reports.length > 0) {
-      html += '<ul class="report-list">';
-      for (const report of result.reports) {
-        html += '<li><div class="report-title">' + this.escape(report.name) + '</div>';
-        html += '<div class="report-reason"><strong>Reason:</strong> ' + this.escape(report.reason) + '</div>';
-        html += '<div class="report-fields"><strong>Source Segments:</strong> ';
-        for (const seg of report.sourceSegments) {
-          html += '<span class="badge badge-segment">' + seg + '</span>';
-        }
-        html += '</div>';
-        html += '<div class="report-fields"><strong>Key Fields:</strong> ' + this.escape(report.keyFields.join(', ')) + '</div>';
-        html += '<div class="report-example"><strong>Example Output:</strong><br/>' + this.escape(report.exampleRow) + '</div>';
-        html += '</li>';
-      }
-      html += '</ul>';
-    } else {
-      html += '<p class="no-data">No reports detected for this message.</p>';
-    }
-    html += '</div>';
-
-    html += '<div class="section"><h2>Handoff &amp; Output Cadence</h2><div class="output-profile">';
-    html += '<div class="output-card"><div class="info-label">Downstream Handoff Report</div>';
-    html += result.outputProfile.hasHandoffReport
-      ? '<span class="badge badge-yes">YES</span>'
-      : '<span class="badge badge-no">NO</span>';
-    html += '<div class="report-fields"><strong>Handoff Reports:</strong></div>';
-    if (result.outputProfile.handoffReports.length > 0) {
-      html += '<ul>';
-      for (const reportName of result.outputProfile.handoffReports) {
-        html += `<li>${this.escape(reportName)}</li>`;
-      }
-      html += '</ul>';
-    } else {
-      html += '<p class="no-data">None detected.</p>';
-    }
-    html += '<div class="report-fields"><strong>Status Reports:</strong></div>';
-    if (result.outputProfile.statusReports.length > 0) {
-      html += '<ul>';
-      for (const reportName of result.outputProfile.statusReports) {
-        html += `<li>${this.escape(reportName)}</li>`;
-      }
-      html += '</ul>';
-    } else {
-      html += '<p class="no-data">None detected.</p>';
-    }
-    html += '</div>';
-    html += '<div class="output-card"><div class="info-label">Estimated Cadence</div>';
-    html += `<div class="cadence-value">${this.escape(result.outputProfile.cadence)}</div>`;
-    html += `<span class="badge badge-confidence">${this.escape(result.outputProfile.confidence)} confidence</span>`;
-    html += `<p class="estimated-reason"><strong>Estimated:</strong> ${this.escape(result.outputProfile.cadenceReason)}</p>`;
-    html += '</div></div></div>';
-
-    html += '<div class="section"><h2>Payment Summary</h2><div class="payment-summary">';
-    html += `<div class="summary-card amount"><div class="summary-label">Amount</div><div class="summary-value">${this.escape(result.extracted.paymentAmount || 'N/A')}</div></div>`;
-    html += `<div class="summary-card date"><div class="summary-label">Payment Date</div><div class="summary-value">${this.escape(result.extracted.paymentDate || 'N/A')}</div></div>`;
-    html += `<div class="summary-card method"><div class="summary-label">Trace Number</div><div class="summary-value">${this.escape(result.extracted.traceNumber || 'N/A')}</div></div>`;
-    html += '</div></div>';
-
-    html += '<div class="section"><h2>Message Structure</h2><div class="mermaid"></div><pre class="mermaid-source" style="display:none">' + this.escape(diagram) + '</pre></div>';
-
-    html += '<div class="section"><h2>Parties</h2>';
-    if (result.extracted.parties.length > 0) {
-      html += '<table><thead><tr><th>Code</th><th>Name</th></tr></thead><tbody>';
-      for (const party of result.extracted.parties) {
-        html += `<tr><td>${this.escape(party.code)}</td><td>${this.escape(party.name)}</td></tr>`;
-      }
-      html += '</tbody></table>';
-    } else {
-      html += '<p class="no-data">No party information found.</p>';
-    }
-    html += '</div>';
-
-    html += '<div class="section"><h2>Contacts</h2>';
-    if ((result.extracted.contacts ?? []).length > 0) {
-      html += '<table><thead><tr><th>Name</th><th>Communication</th><th>Alternate Communication</th></tr></thead><tbody>';
-      for (const contact of result.extracted.contacts ?? []) {
-        const communication = [contact.communicationQualifier, contact.communicationNumber].filter(Boolean).join(': ');
-        const alternateCommunication = [contact.alternateCommunicationQualifier, contact.alternateCommunicationNumber].filter(Boolean).join(': ');
-        html += `<tr><td>${this.escape(contact.name || 'N/A')}</td><td>${this.escape(communication || 'N/A')}</td><td>${this.escape(alternateCommunication || 'N/A')}</td></tr>`;
-      }
-      html += '</tbody></table>';
-    } else {
-      html += '<p class="no-data">No contact information found.</p>';
-    }
-    html += '</div>';
-
-    html += '<div class="section"><h2>Entities</h2>';
-    if ((result.extracted.entities ?? []).length > 0) {
-      html += '<table><thead><tr><th>Assigned Number</th><th>Entity Code</th><th>Identification</th><th>Additional Entity Code</th></tr></thead><tbody>';
-      for (const entity of result.extracted.entities ?? []) {
-        const identification = [entity.identificationCodeQualifier, entity.identificationCode].filter(Boolean).join(': ');
-        html += `<tr><td>${this.escape(entity.assignedNumber || 'N/A')}</td><td>${this.escape(entity.entityIdentifierCode || 'N/A')}</td><td>${this.escape(identification || 'N/A')}</td><td>${this.escape(entity.additionalEntityIdentifierCode || 'N/A')}</td></tr>`;
-      }
-      html += '</tbody></table>';
-    } else {
-      html += '<p class="no-data">No entity information found.</p>';
-    }
-    html += '</div>';
-
-    html += '<div class="section"><h2>Notes</h2>';
-    if ((result.extracted.notes ?? []).length > 0) {
-      html += '<table><thead><tr><th>Reference Code</th><th>Text</th></tr></thead><tbody>';
-      for (const note of result.extracted.notes ?? []) {
-        html += `<tr><td>${this.escape(note.referenceCode || 'N/A')}</td><td>${this.escape(note.text)}</td></tr>`;
-      }
-      html += '</tbody></table>';
-    } else {
-      html += '<p class="no-data">No notes found.</p>';
-    }
-    html += '</div>';
-
-    html += '<div class="section"><h2>Invoice / Remittance Details</h2>';
-    if (result.extracted.remittanceDetails.length > 0) {
-      html += '<table><thead><tr><th>Invoice Number</th><th>Paid Amount</th></tr></thead><tbody>';
-      for (const detail of result.extracted.remittanceDetails) {
-        html += `<tr><td>${this.escape(detail.invoiceNumber || 'N/A')}</td><td>${this.escape(detail.paidAmount || 'N/A')}</td></tr>`;
-      }
-      html += '</tbody></table>';
-    } else {
-      html += '<p class="no-data">No remittance details found.</p>';
-    }
-    html += '</div>';
-
-    html += '<div class="section"><h2>Segment Explanation</h2>';
-    for (const group of result.segmentGroups) {
-      html += '<div class="segment-group">';
-      html += `<h3>${this.escape(group.name)}</h3>`;
-      html += `<p class="segment-group-description">${this.escape(group.description)}</p>`;
-      html += '<table><thead><tr><th>Segment</th><th>Position</th><th>Name</th><th>Value</th></tr></thead><tbody>';
-      for (const segment of group.segments) {
-        const rows = segmentExplainer.explain(segment);
-        for (const row of rows) {
-          html += `<tr><td><strong>${this.escape(segment.tag)}</strong></td><td>${this.escape(`${segment.tag}${String(row.position).padStart(2, '0')}`)}</td><td>${this.escape(row.name)}</td><td><code>${this.escape(row.value)}</code></td></tr>`;
-        }
-      }
-      html += '</tbody></table></div>';
-    }
-    html += '</div>';
-
-    html += '<div class="section"><h2>Validation Warnings</h2>';
-    if (result.warnings.length > 0) {
-      for (const warning of result.warnings) {
-        const icon = warning.severity === 'error' ? '❌ Error' : warning.severity === 'warning' ? '⚠️ Warning' : 'ℹ️ Info';
-        html += `<div class="warning ${warning.severity}"><div class="warning-title">${icon}: ${this.escape(warning.message)}</div><div class="warning-segments">Affected: ${warning.affectedSegments.join(', ')}</div></div>`;
-      }
-    } else {
-      html += '<p class="no-data">✅ No validation warnings found.</p>';
-    }
-    html += '</div>';
-
-    html += '<div class="section"><h2>Raw JSON Output</h2><div class="code-block">' + this.escape(JSON.stringify(result, null, 2)) + '</div></div>';
-
-    html += `</div>
+    <div class="edit-panel" id="editPanel">
+      <h3>Edit EDI Source</h3>
+      <textarea id="ediSource" spellcheck="false">${rawContentEscaped}</textarea>
+      <div class="edit-actions">
+        <button id="btnReanalyze">Re-analyze</button>
+        <button id="btnSave" class="secondary">Save to File</button>
+        <button id="btnCancel" class="secondary">Cancel</button>
+        <span id="editStatus"></span>
+      </div>
+    </div>
+    <h1>EDI Message Analysis</h1>
+    <p class="subtitle">Business-language breakdown of the EDI payment/remittance message.</p>
+    ${sections}
+  </div>
   <script>
     (function () {
+      var vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
+      function $(id) { return document.getElementById(id); }
+      var panel = $('editPanel'), status = $('editStatus'), ta = $('ediSource');
+
+      $('btnEdit').addEventListener('click', function () { panel.classList.toggle('visible'); if (panel.classList.contains('visible')) { ta.focus(); } });
+      $('btnCancel').addEventListener('click', function () { panel.classList.remove('visible'); status.textContent=''; });
+      $('btnReanalyze').addEventListener('click', function () { if (vscode) { status.textContent='Re-analyzing…'; status.className=''; vscode.postMessage({ type:'reanalyze', content: ta.value }); } });
+      $('btnSave').addEventListener('click', function () { if (vscode) { vscode.postMessage({ type:'save', content: ta.value }); } });
+
+      $('btnCopy').addEventListener('click', function () {
+        var txt = ($('jsonOutput') || {}).textContent || '';
+        var done = function () { var b = $('btnCopy'); b.textContent='Copied!'; setTimeout(function(){ b.textContent='Copy JSON'; }, 1500); };
+        if (navigator.clipboard) { navigator.clipboard.writeText(txt).then(done).catch(done); } else { done(); }
+      });
+      $('btnExpand').addEventListener('click', function () { document.querySelectorAll('details.section').forEach(function(d){ d.open=true; }); });
+      $('btnCollapse').addEventListener('click', function () { document.querySelectorAll('details.section').forEach(function(d){ d.open=false; }); });
+
+      window.addEventListener('message', function (ev) {
+        var m = ev.data || {};
+        if (m.type === 'error') { status.textContent = 'Error: ' + m.message; status.className = 'err'; }
+        else if (m.type === 'saved') { status.textContent = 'Saved to file.'; status.className = 'ok'; }
+      });
+
       function draw() {
         var src = document.querySelector('.mermaid-source');
         var target = document.querySelector('.mermaid');
         if (!src || !target || typeof mermaid === 'undefined') { return; }
-        mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
-        var code = src.textContent || '';
-        mermaid.render('ediGraph', code).then(function (res) {
-          target.innerHTML = res.svg;
-        }).catch(function (err) {
-          target.innerHTML = '<pre style="color:#c0392b;white-space:pre-wrap">Graph render error: ' +
-            String(err && err.message ? err.message : err) + '</pre>';
-          console.error('Mermaid error:', err);
-        });
+        var dark = document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast');
+        mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default', securityLevel: 'loose' });
+        mermaid.render('ediGraph', src.textContent || '').then(function (res) { target.innerHTML = res.svg; })
+          .catch(function (err) { target.innerHTML = '<pre style="color:#e74c3c;white-space:pre-wrap">Graph render error: ' + String(err && err.message ? err.message : err) + '</pre>'; });
       }
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', draw);
-      } else {
-        draw();
-      }
+      if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', draw); } else { draw(); }
     })();
   </script>
 </body>
 </html>`;
-
-    return html;
   }
 
   private escape(text: string | undefined): string {

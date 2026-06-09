@@ -9,6 +9,18 @@ import { HtmlRenderer } from './webview/renderHtml';
 import { AnalysisResult } from './types';
 
 let currentPanel: vscode.WebviewPanel | undefined;
+let currentSourceUri: vscode.Uri | undefined;
+
+export function analyze(content: string): AnalysisResult {
+  const parsed = new X12Parser().parse(content);
+  const extracted = new MessageExtractor().extract(parsed);
+  const classification = new MessageClassifier().classify(extracted);
+  const reports = new ReportDetector().detect(extracted, classification);
+  const segmentGroups = new SegmentGrouper().group(extracted.allSegments);
+  const outputProfile = new OutputProfiler().profile(extracted, classification, reports);
+  const warnings = new ValidationService().validate(extracted);
+  return { classification, extracted, reports, warnings, segmentGroups, outputProfile };
+}
 
 export function activate(context: vscode.ExtensionContext) {
   const disposable = vscode.commands.registerCommand('ediInsight.analyze', async () => {
@@ -24,46 +36,15 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
 
+    const content = editor.document.getText();
+    if (!content.trim()) {
+      vscode.window.showErrorMessage('File is empty');
+      return;
+    }
+
     try {
-      const content = editor.document.getText();
-      if (!content.trim()) {
-        vscode.window.showErrorMessage('File is empty');
-        return;
-      }
-
-      const parser = new X12Parser();
-      const parsed = parser.parse(content);
-
-      const extractor = new MessageExtractor();
-      const extracted = extractor.extract(parsed);
-
-      const classifier = new MessageClassifier();
-      const classification = classifier.classify(extracted);
-
-      const reportDetector = new ReportDetector();
-      const reports = reportDetector.detect(extracted, classification);
-
-      const segmentGrouper = new SegmentGrouper();
-      const segmentGroups = segmentGrouper.group(extracted.allSegments);
-
-      const outputProfiler = new OutputProfiler();
-      const outputProfile = outputProfiler.profile(extracted, classification, reports);
-
-      const validator = new ValidationService();
-      const warnings = validator.validate(extracted);
-
-      const result: AnalysisResult = {
-        classification,
-        extracted,
-        reports,
-        warnings,
-        segmentGroups,
-        outputProfile
-      };
-
-      const renderer = new HtmlRenderer();
-      const html = renderer.render(result);
-
+      const html = new HtmlRenderer().render(analyze(content), content);
+      currentSourceUri = editor.document.uri;
       showWebView(context, html, editor.document.fileName);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -78,29 +59,64 @@ export function activate(context: vscode.ExtensionContext) {
 function showWebView(context: vscode.ExtensionContext, html: string, fileName: string) {
   const column = vscode.ViewColumn.Beside;
 
-  if (currentPanel) {
-    currentPanel.reveal(column);
-    currentPanel.webview.html = html;
-  } else {
+  if (!currentPanel) {
     currentPanel = vscode.window.createWebviewPanel(
       'ediInsight',
       `EDI Insight - ${fileName.split('/').pop()}`,
       column,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true
-      }
+      { enableScripts: true, retainContextWhenHidden: true }
     );
 
-    currentPanel.webview.html = html;
-
-    currentPanel.onDidDispose(
-      () => {
-        currentPanel = undefined;
-      },
+    currentPanel.webview.onDidReceiveMessage(
+      (msg) => handleMessage(msg),
       undefined,
       context.subscriptions
     );
+
+    currentPanel.onDidDispose(() => { currentPanel = undefined; }, undefined, context.subscriptions);
+  } else {
+    currentPanel.reveal(column);
+  }
+
+  currentPanel.webview.html = html;
+}
+
+async function handleMessage(msg: { type?: string; content?: string }) {
+  if (!currentPanel) { return; }
+  const content = msg.content ?? '';
+
+  if (msg.type === 'reanalyze') {
+    try {
+      if (!content.trim()) { throw new Error('Source is empty.'); }
+      currentPanel.webview.html = new HtmlRenderer().render(analyze(content), content);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      currentPanel.webview.postMessage({ type: 'error', message });
+    }
+    return;
+  }
+
+  if (msg.type === 'save') {
+    if (!currentSourceUri) {
+      currentPanel.webview.postMessage({ type: 'error', message: 'No source file to save to.' });
+      return;
+    }
+    try {
+      const doc = await vscode.workspace.openTextDocument(currentSourceUri);
+      const edit = new vscode.WorkspaceEdit();
+      const fullRange = new vscode.Range(
+        doc.positionAt(0),
+        doc.positionAt(doc.getText().length)
+      );
+      edit.replace(currentSourceUri, fullRange, content);
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (!applied) { throw new Error('Edit could not be applied.'); }
+      await doc.save();
+      currentPanel.webview.postMessage({ type: 'saved' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      currentPanel.webview.postMessage({ type: 'error', message });
+    }
   }
 }
 

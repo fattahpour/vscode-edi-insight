@@ -2,7 +2,7 @@
   "name": "edi-insight",
   "displayName": "EDI Insight",
   "description": "Analyze and visualize EDI payment/remittance messages with business-friendly explanations",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "peyman",
   "engines": {
     "vscode": "^1.75.0"
