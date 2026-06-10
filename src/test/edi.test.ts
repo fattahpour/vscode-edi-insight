@@ -57,6 +57,68 @@ test('X12Parser tokenizes fixtures and detects separators', () => {
   }
 });
 
+test('X12Parser parses a compact (non-padded) ISA without throwing', () => {
+  const compact = 'ISA*00*0*00*0*ZZ*SENDER*ZZ*RECEIVER*240520*1200*U*00401*1*0*T*:~' +
+    'GS*RA*SENDER*RECEIVER*20240520*1200*1*X*004010~' +
+    'ST*820*0001~SE*2*0001~GE*1*1~IEA*1*1~';
+
+  const parsed = parser.parse(compact);
+
+  assert.equal(parsed.segments.length, 6);
+  assert.deepEqual(parsed.segments.map(s => s.tag), ['ISA', 'GS', 'ST', 'SE', 'GE', 'IEA']);
+  assert.deepEqual(parsed.separators, { segment: '~', element: '*', subElement: ':' });
+});
+
+test('X12Parser tags every segment correctly when segments are separated by ~\\n (multiline)', () => {
+  const singleLine = readSample('820-billpay-test.edi');
+  const multiline = singleLine.trim().split('~').filter(s => s.trim()).join('~\n');
+
+  const parsed = parser.parse(multiline);
+
+  assert.deepEqual(
+    parsed.segments.map(s => s.tag),
+    ['ISA', 'GS', 'ST', 'BPR', 'TRN', 'N1', 'N1', 'RMR', 'DTM', 'SE', 'GE', 'IEA']
+  );
+
+  const extracted = extractor.extract(parsed);
+  assert.deepEqual(
+    new ValidationService().validate(extracted).filter(w => w.severity === 'error'),
+    []
+  );
+});
+
+test('X12Parser tags every segment correctly with CRLF (~\\r\\n) line endings', () => {
+  const singleLine = readSample('820-billpay-test.edi');
+  const crlf = singleLine.trim().split('~').filter(s => s.trim()).join('~\r\n');
+
+  const parsed = parser.parse(crlf);
+
+  assert.deepEqual(
+    parsed.segments.map(s => s.tag),
+    ['ISA', 'GS', 'ST', 'BPR', 'TRN', 'N1', 'N1', 'RMR', 'DTM', 'SE', 'GE', 'IEA']
+  );
+});
+
+test('X12Parser parses newline-delimited segments with no ~ terminator at all', () => {
+  const singleLine = readSample('820-billpay-test.edi');
+  const newlineDelimited = singleLine.trim().split('~').filter(s => s.trim()).join('\n');
+
+  const parsed = parser.parse(newlineDelimited);
+
+  assert.equal(parsed.separators.segment, '\n');
+  assert.deepEqual(
+    parsed.segments.map(s => s.tag),
+    ['ISA', 'GS', 'ST', 'BPR', 'TRN', 'N1', 'N1', 'RMR', 'DTM', 'SE', 'GE', 'IEA']
+  );
+});
+
+test('X12Parser throws a clear error when content does not start with ISA', () => {
+  assert.throws(
+    () => parser.parse('GS*RA*SENDER*RECEIVER*20240520*1200*1*X*004010~'),
+    /Invalid X12 message: ISA segment not found/
+  );
+});
+
 test('MessageExtractor extracts bill-pay ISA, payment, and party data', () => {
   const extracted = extractSample('820-billpay-test.edi');
 

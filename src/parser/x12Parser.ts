@@ -2,43 +2,34 @@ import { ParsedMessage, Segment, ExtractedMessage } from '../types';
 
 export class X12Parser {
   parse(content: string): ParsedMessage {
-    const isaSegment = this.extractISASegment(content);
-    if (!isaSegment) {
+    const trimmed = content.trim();
+    if (!trimmed.startsWith('ISA')) {
       throw new Error('Invalid X12 message: ISA segment not found');
     }
 
-    const separators = {
-      segment: '~',
-      element: '*',
-      subElement: ':'
-    };
+    const separators = this.detectSeparators(trimmed);
 
-    // ISA segment: element separator at position 3
-    if (isaSegment.length >= 4) {
-      separators.element = isaSegment[3];
-      separators.subElement = isaSegment.length > 104 ? isaSegment[104] : ':';
-    }
-
-    const segmentStrings = content.split(separators.segment).filter(s => s.trim());
+    const segmentStrings = trimmed
+      .split(separators.segment)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
     const segments: Segment[] = [];
 
     for (const segmentString of segmentStrings) {
-      if (!segmentString.trim()) continue;
-
       // Extract tag: first 3 characters, removing separator if present
       let tag = segmentString.substring(0, 3);
       if (tag.includes(separators.element)) {
         tag = tag.substring(0, tag.indexOf(separators.element));
       }
-      
+
       // Get elements: start after the tag
       let elementsPart = segmentString.substring(3);
-      
+
       // Skip the separator between the segment tag and its first element.
       if (elementsPart.startsWith(separators.element)) {
         elementsPart = elementsPart.substring(1);
       }
-      
+
       const elements = elementsPart.split(separators.element);
 
       segments.push({
@@ -54,9 +45,29 @@ export class X12Parser {
     };
   }
 
-  private extractISASegment(content: string): string | null {
-    const isaMatch = content.match(/ISA.{100,}/);
-    return isaMatch ? isaMatch[0] : null;
+  // ISA always has 16 elements, so the 16th occurrence of the element
+  // separator (counted from position 3) is followed by ISA16 (the
+  // sub-element separator) and then the segment terminator. Locating
+  // separators this way works regardless of ISA padding/length and
+  // regardless of how segments are delimited (~, ~\n, ~\r\n, or \n).
+  private detectSeparators(content: string): ParsedMessage['separators'] {
+    const element = content[3] ?? '*';
+    let segment = '~';
+    let subElement = ':';
+
+    let occurrences = 0;
+    for (let i = 3; i < content.length; i++) {
+      if (content[i] === element) {
+        occurrences++;
+        if (occurrences === 16) {
+          subElement = content[i + 1] ?? subElement;
+          segment = content[i + 2] ?? segment;
+          break;
+        }
+      }
+    }
+
+    return { segment, element, subElement };
   }
 
   extractElementValue(segment: Segment, position: number): string {
