@@ -35,8 +35,8 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     const fileExt = editor.document.fileName.split('.').pop()?.toLowerCase();
-    if (!['edi', 'x12', 'txt'].includes(fileExt || '')) {
-      vscode.window.showWarningMessage('File must have .edi, .x12, or .txt extension');
+    if (!['edi', 'x12', 'txt', 'dat'].includes(fileExt || '')) {
+      vscode.window.showWarningMessage('File must have .edi, .x12, .txt, or .dat extension');
       return;
     }
 
