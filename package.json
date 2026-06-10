@@ -2,7 +2,7 @@
   "name": "edi-insight",
   "displayName": "EDI Insight",
   "description": "Analyze and visualize EDI payment/remittance messages with business-friendly explanations. 100% offline — no data leaves your machine.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "fattahpour",
   "license": "MIT",
   "icon": "icon.png",
@@ -49,7 +49,8 @@
         ],
         "extensions": [
           ".edi",
-          ".x12"
+          ".x12",
+          ".dat"
         ],
         "configuration": "./language-configuration.json"
       }
@@ -71,10 +72,18 @@
       "editor/context": [
         {
           "command": "ediInsight.analyze",
-          "when": "resourceExtname =~ /\\.(edi|x12|txt)$/"
+          "when": "resourceExtname =~ /\\.(edi|x12|txt|dat)$/i"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "ediInsight.analyze",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorTextFocus && resourceExtname =~ /\\.(edi|x12|txt|dat)$/i"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
